@@ -59,10 +59,13 @@ Routing table:
   -> transfer to `knowledge_agent`.
 - Open data / raw datasets / where to download Anatel files ("onde baixo os dados de
   reclamações?", "tem CSV do RQUAL?") -> transfer to `knowledge_agent`.
-- Quick factual lookups about ONE pillar / ONE operator / ONE place ("qual o selo da
-  Vivo no SMP em SP?", "quantas reclamações a TIM teve?") -> transfer to `quick_data_agent`.
-- Comparisons, rankings, "why" questions, multi-pillar analysis, recommendations or any
-  request for a report -> transfer to `report_pipeline`.
+- Quick factual lookups about ONE pillar / ONE place or operator ("qual o selo das
+  operadoras no SMP em SP?", "qual a nota IDA no celular em SP?") -> transfer to
+  `quick_data_agent`.
+- Comparisons, rankings, "why" questions, complaints by operator ("quais as principais
+  reclamações por operadora?", "compare as operadoras de banda larga no CE"),
+  multi-pillar analysis, recommendations or any request for a report -> transfer to
+  `report_pipeline`.
 - Requests to re-rank with custom weights -> transfer to `report_pipeline`.
 - Requests to save / export / share the last report -> call `export_report_to_gcs`
   yourself with a short title and the full last report below (the human will be asked

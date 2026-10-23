@@ -218,7 +218,7 @@ sequenceDiagram
 │   ├── tools/                # MCP toolset (OIDC ID-token auth) + local tools
 │   ├── plugins/              # observability, guardrails, tool guard
 │   └── observability/        # JSON logging + OpenTelemetry
-├── tests/unit/               # 42 offline tests (graph, schemas, tools, plugins, PII, memory)
+├── tests/unit/               # 46 offline tests (graph, schemas, tools, plugins, PII, memory, golden evalset)
 ├── tests/eval/               # golden dataset + ADK AgentEvaluator
 ├── tests/e2e/                # remote E2E harness (E1-E10 against Agent Engine)
 ├── terraform/                # IaC: all cloud resources, remote GCS state, per-env tfvars
@@ -238,7 +238,7 @@ sequenceDiagram
 |---|---|---|
 | **Tool & Interface Design** | Tool docstrings | [`tools/report_tools.py`](anatel_advisor/tools/report_tools.py): purpose, every argument and the return value documented; MCP tools carry server-side descriptions |
 | | Descriptive naming | `calculate_weighted_operator_ranking`, `export_report_to_gcs`, `list_supported_anatel_filters`, `consultar_reclamacoes_ida` |
-| | Explicit JSON schemas | [`schemas.py`](anatel_advisor/schemas.py): Pydantic args for **every MCP tool** (`MCP_ARG_SCHEMAS`, `extra="forbid"`), typed tool I/O, `CriticVerdict` as `output_schema` |
+| | Explicit JSON schemas | [`schemas.py`](anatel_advisor/schemas.py): Pydantic args for **every MCP tool** (`MCP_ARG_SCHEMAS`, `extra="forbid"`), typed tool I/O (`McpToolOutput`, `RankingResult`, `ExportReportResult`, `SupportedFiltersResult`), exported `TOOL_JSON_SCHEMAS` (input + output JSON Schemas for all 10 tools), `CriticVerdict` as `output_schema` |
 | | Guided error handling | [`plugins/tool_guard.py`](anatel_advisor/plugins/tool_guard.py): invalid args are short-circuited with a `recovery_hint`; empty results return "broaden filters, never fabricate"; timeout/401/5xx return actionable guidance; local tools return `status="error"` plus a hint |
 | **Context & Memory** | System instructions | [`prompts.py`](anatel_advisor/prompts.py): `CONSTITUTION` (identity, domain knowledge, 7 hard rules) as `static_instruction`, plus role prompts |
 | | History compaction | [`agent.py`](anatel_advisor/agent.py): `EventsCompactionConfig` (sliding window with overlap, Flash summarizer) + `ContextCacheConfig` |

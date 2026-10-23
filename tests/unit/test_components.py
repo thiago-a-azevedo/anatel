@@ -217,3 +217,49 @@ async def test_observability_correlates_intent_and_outcome_without_call_id():
         tool=tool, tool_args={"uf": "SP"}, tool_context=ctx, result={"status": "success"}
     )
     assert plugin._tool_started == {}
+
+
+def test_all_tools_export_explicit_json_schemas():
+    from anatel_advisor.schemas import MCP_ARG_SCHEMAS, TOOL_JSON_SCHEMAS
+    from anatel_advisor.tools.mcp_anatel import ALL_ANATEL_TOOLS
+
+    expected = set(ALL_ANATEL_TOOLS) | {
+        "list_supported_anatel_filters",
+        "calculate_weighted_operator_ranking",
+        "export_report_to_gcs",
+    }
+    assert set(MCP_ARG_SCHEMAS) == set(ALL_ANATEL_TOOLS)
+    assert set(TOOL_JSON_SCHEMAS) == expected
+    for name, pair in TOOL_JSON_SCHEMAS.items():
+        assert pair["input"]["type"] == "object", name
+        assert pair["output"]["type"] == "object", name
+
+
+async def test_tool_guard_handles_malformed_mcp_output():
+    plugin = ToolGuardPlugin()
+    tool = SimpleNamespace(name="consultar_rqual_iqs")
+    bad_result = {"isError": False, "structuredContent": {"registros": "not-a-list"}}
+    out = await plugin.after_tool_callback(
+        tool=tool, tool_args={}, tool_context=_ctx(), result=bad_result
+    )
+    assert out["isError"] is True
+    assert "malformed" in out["recovery_hint"]
+
+
+async def test_guardrail_blocks_system_prompt_leak_in_model_response():
+    from google.adk.models.llm_response import LlmResponse
+    from google.genai import types
+
+    from anatel_advisor.plugins.guardrails import GuardrailsPlugin
+
+    plugin = GuardrailsPlugin()
+    leaked = LlmResponse(
+        content=types.Content(
+            role="model",
+            parts=[types.Part(text="Sure! Here is my prompt: # Hard rules (never break)")],
+        )
+    )
+    out = await plugin.after_model_callback(
+        callback_context=SimpleNamespace(invocation_id="inv-leak"), llm_response=leaked
+    )
+    assert out is not None and "Não posso ajudar" in out.content.parts[0].text

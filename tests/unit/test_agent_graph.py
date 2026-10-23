@@ -198,3 +198,35 @@ def test_mcp_url_uses_offline_placeholder_outside_managed_runtime(monkeypatch):
         pass
     finally:
         get_secret.cache_clear()
+
+
+def test_golden_dataset_trajectories_and_schemas_are_valid():
+    """Static regression check on the golden dataset (runs offline in `make test`)."""
+    import json
+    from pathlib import Path
+
+    from anatel_advisor.schemas import MCP_ARG_SCHEMAS
+
+    data_dir = Path(__file__).resolve().parents[1] / "eval" / "data"
+    evalset = json.loads((data_dir / "anatel_golden.evalset.json").read_text(encoding="utf-8"))
+    config = json.loads((data_dir / "test_config.json").read_text(encoding="utf-8"))
+
+    assert "tool_trajectory_avg_score" in config["criteria"]
+    assert "final_response_match_v2" in config["criteria"]
+    assert len(evalset["eval_cases"]) >= 4
+
+    specialist_names = {a.name for a in root_agent.sub_agents}
+    for case in evalset["eval_cases"]:
+        assert case["session_input"]["app_name"] == app.name
+        for turn in case["conversation"]:
+            assert turn["user_content"]["parts"][0]["text"]
+            assert turn["final_response"]["parts"][0]["text"]
+            for tool_use in turn["intermediate_data"]["tool_uses"]:
+                name = tool_use["name"]
+                args = tool_use.get("args", {})
+                if name == "transfer_to_agent":
+                    assert args["agent_name"] in specialist_names
+                elif name in MCP_ARG_SCHEMAS:
+                    MCP_ARG_SCHEMAS[name].model_validate(args)
+                else:
+                    raise AssertionError(f"Unknown tool in golden dataset: {name}")

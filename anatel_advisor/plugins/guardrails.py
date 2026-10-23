@@ -52,10 +52,23 @@ _BLOCK_MESSAGE = (
     "operadoras, explicar o Selo RQUAL ou analisar reclamações por estado."
 )
 
+_OUTPUT_LEAK_PATTERNS = [
+    re.compile(p, re.IGNORECASE)
+    for p in (
+        r"#\s*Hard rules \(never break\)",
+        r"static_instruction\s*=\s*CONSTITUTION",
+    )
+]
+
 
 def detect_prompt_injection(text: str) -> bool:
     """Returns True if ``text`` matches a known prompt-injection pattern."""
     return any(p.search(text) for p in _INJECTION_PATTERNS)
+
+
+def detect_unsafe_output(text: str) -> bool:
+    """Returns True if a model response leaks internal system-prompt instructions."""
+    return any(p.search(text) for p in _OUTPUT_LEAK_PATTERNS)
 
 
 @lru_cache(maxsize=1)
@@ -160,10 +173,21 @@ class GuardrailsPlugin(BasePlugin):
         if not llm_response.content or not llm_response.content.parts:
             return None
         text = "\n".join(p.text for p in llm_response.content.parts if p.text and not p.thought)
-        if text and await asyncio.to_thread(_model_armor_blocks, text, is_prompt=False):
+        if not text:
+            return None
+        layer = None
+        with get_tracer().start_as_current_span("anatel.guardrails.screen_response") as span:
+            if detect_unsafe_output(text):
+                layer = "local_rules"
+            elif await asyncio.to_thread(_model_armor_blocks, text, is_prompt=False):
+                layer = "model_armor"
+            span.set_attribute("anatel.guardrails.blocked", bool(layer))
+            if layer:
+                span.set_attribute("anatel.guardrails.layer", layer)
+        if layer:
             logger.warning(
                 "guardrail_blocked",
-                extra={"layer": "model_armor", "reason": "model_response",
+                extra={"layer": layer, "reason": "model_response",
                        "invocation_id": callback_context.invocation_id},
             )
             return _blocked_response()

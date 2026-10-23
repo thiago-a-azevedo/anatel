@@ -94,7 +94,21 @@ class ToolGuardPlugin(BasePlugin):
     ):
         if tool.name not in MCP_ARG_SCHEMAS or not isinstance(result, dict):
             return None
-        parsed = McpToolOutput.model_validate(result)
+        try:
+            parsed = McpToolOutput.model_validate(result)
+        except ValidationError as exc:
+            logger.warning(
+                "tool_output_malformed",
+                extra={"tool": tool.name, "errors": exc.errors(include_url=False)},
+            )
+            return {
+                **result,
+                "isError": True,
+                "recovery_hint": (
+                    "The Anatel tool returned a malformed payload. Do not invent figures; "
+                    "tell the user the data source returned an unexpected format."
+                ),
+            }
         if parsed.isError:
             return {
                 **result,

@@ -309,3 +309,43 @@ class CriticVerdict(BaseModel):
     groundedness_score: int = Field(ge=1, le=5, description="1 = hallucinated, 5 = fully grounded.")
     issues: list[CriticIssue] = Field(default_factory=list)
     summary: str = Field(description="One-sentence justification of the verdict.")
+
+
+#: Materialized JSON Schemas (Draft 2020-12) for every MCP and local tool.
+TOOL_JSON_SCHEMAS: dict[str, dict[str, dict]] = {
+    **{
+        name: {
+            "input": model.model_json_schema(),
+            "output": McpToolOutput.model_json_schema(),
+        }
+        for name, model in MCP_ARG_SCHEMAS.items()
+    },
+    "list_supported_anatel_filters": {
+        "input": {"type": "object", "properties": {}, "additionalProperties": False},
+        "output": SupportedFiltersResult.model_json_schema(),
+    },
+    "calculate_weighted_operator_ranking": {
+        "input": {
+            "type": "object",
+            "properties": {
+                "operators": {"type": "array", "items": OperatorScores.model_json_schema()},
+                "weights": RankingWeights.model_json_schema(),
+            },
+            "required": ["operators"],
+            "additionalProperties": False,
+        },
+        "output": RankingResult.model_json_schema(),
+    },
+    "export_report_to_gcs": {
+        "input": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string"},
+                "markdown_report": {"type": "string"},
+            },
+            "required": ["title", "markdown_report"],
+            "additionalProperties": False,
+        },
+        "output": ExportReportResult.model_json_schema(),
+    },
+}

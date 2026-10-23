@@ -128,6 +128,7 @@ class _IdTokenProvider:
 
 
 def _resolve_mcp_url() -> str:
+    """Resolves the Anatel MCP endpoint from Secret Manager, with an offline fallback for tests."""
     try:
         url = get_secret(get_settings().mcp_url_secret_id, env_override="ANATEL_MCP_URL")
     except SecretNotFoundError:
