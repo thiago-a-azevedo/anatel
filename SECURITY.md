@@ -7,7 +7,8 @@ GitHub Security Advisories ("Report a vulnerability" on the repository's Securit
 ## Security design
 | Area | Control |
 |---|---|
-| Identity | Dedicated runtime service account (`anatel-advisor-sa`) on Agent Engine; no service-account keys anywhere. CI uses Workload Identity Federation. |
+| Identity | Dedicated runtime SA (`anatel-advisor-sa`) on Agent Engine and a separate deployer SA (`anatel-advisor-deployer`) for CI/CD; no service-account keys anywhere. GitHub Actions authenticates with Workload Identity Federation restricted to this repository. |
+| Separation of duties | The deployer can evaluate, deploy and smoke-test but cannot change IAM or create infrastructure (`infra/setup.sh` is admin-applied). Production deploys are gated by a GitHub `production` environment. |
 | Least privilege | Resource-level bindings where possible (`run.invoker` on the MCP service, `secretAccessor` on one secret, `objectCreator` on the reports bucket). `infra/setup.sh` falls back to project level only when the operator cannot set resource IAM, and says so. |
 | Secrets | MCP endpoint in Secret Manager. Developer overrides (`ANATEL_MCP_URL`, `MCP_ID_TOKEN`) are **ignored** on managed runtimes. |
 | Service-to-service auth | Private Cloud Run MCP; Google-signed OIDC ID tokens with the service URL as audience, cached and refreshed. |

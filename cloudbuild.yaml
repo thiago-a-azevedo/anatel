@@ -1,10 +1,31 @@
-# Cloud Build pipeline: lint -> unit tests -> golden eval -> infra -> deploy.
-# Trigger: gcloud builds submit --config cloudbuild.yaml --project nprod-demo
+# Cloud Build CD pipeline: lint -> unit -> golden eval -> deploy -> post-deploy e2e.
+#
+# Runs as the least-privilege deployer SA created by infra/setup_cicd.sh (not the
+# default Cloud Build SA). Infrastructure is applied separately by infra/setup.sh.
+#
+# Manual run:
+#   gcloud builds submit --config cloudbuild.yaml --project nprod-demo \
+#     --service-account projects/nprod-demo/serviceAccounts/anatel-advisor-deployer@nprod-demo.iam.gserviceaccount.com
+# Trigger (after connecting the GitHub repo in Cloud Build > Repositories):
+#   gcloud builds triggers create github --name=anatel-advisor-main \
+#     --repo-owner=thiago-a-azevedo --repo-name=anatel --branch-pattern='^main$' \
+#     --build-config=cloudbuild.yaml --region=us-central1 \
+#     --service-account=projects/nprod-demo/serviceAccounts/anatel-advisor-deployer@nprod-demo.iam.gserviceaccount.com
+substitutions:
+  _REGION: us-central1
+options:
+  logging: CLOUD_LOGGING_ONLY
+  env:
+    - GOOGLE_CLOUD_PROJECT=$PROJECT_ID
+    - GOOGLE_CLOUD_LOCATION=${_REGION}
+    - GOOGLE_GENAI_USE_VERTEXAI=TRUE
+    - UV_PYTHON_INSTALL_DIR=/workspace/.uv-python
+timeout: 3600s
 steps:
   - id: install
     name: python:3.12-slim
     entrypoint: bash
-    args: ["-c", "pip install -q uv && uv venv .venv && uv pip install --python .venv/bin/python -e '.[dev]'"]
+    args: ["-c", "pip install -q uv && uv venv .venv --python /usr/local/bin/python3 && uv pip install -q --python .venv/bin/python -e '.[dev]'"]
   - id: lint
     name: python:3.12-slim
     entrypoint: bash
@@ -16,17 +37,16 @@ steps:
   - id: eval
     name: python:3.12-slim
     entrypoint: bash
-    env: ["GOOGLE_CLOUD_PROJECT=$PROJECT_ID", "GOOGLE_CLOUD_LOCATION=us-central1", "GOOGLE_GENAI_USE_VERTEXAI=TRUE"]
     args: ["-c", ".venv/bin/python -m pytest tests/eval -m eval -q"]
-  - id: infra
-    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
-    entrypoint: bash
-    env: ["PROJECT_ID=$PROJECT_ID", "REGION=us-central1"]
-    args: ["infra/setup.sh"]
   - id: deploy
     name: python:3.12-slim
     entrypoint: bash
     args: ["-c", ".venv/bin/python deployment/deploy.py"]
-options:
-  logging: CLOUD_LOGGING_ONLY
-timeout: 3600s
+  - id: e2e
+    name: python:3.12-slim
+    entrypoint: bash
+    args: ["-c", ".venv/bin/python tests/e2e/run_remote_stories.py /workspace/e2e_results.json"]
+artifacts:
+  objects:
+    location: gs://${PROJECT_ID}-anatel-advisor-staging/cloudbuild/$BUILD_ID/
+    paths: ["e2e_results.json"]

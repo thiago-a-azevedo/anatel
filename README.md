@@ -21,8 +21,9 @@
 7. [Getting started](#7-getting-started)
 8. [Evaluation](#8-evaluation)
 9. [Observability](#9-observability)
-10. [Configuration](#10-configuration)
-11. [Limitations & roadmap](#11-limitations--roadmap)
+10. [CI/CD](#10-cicd)
+11. [Configuration](#11-configuration)
+12. [Limitations & roadmap](#12-limitations--roadmap)
 
 ---
 
@@ -166,7 +167,7 @@ sequenceDiagram
   D->>A: collected_data
   A->>J: analysis_draft
   J->>P: critic_verdict (approved, groundedness 5/5)
-  P-->>U: final report + "save it?"
+  P-->>U: final report (conversation only)
   U->>C: Salve o relatório
   C-->>U: confirmation request (HITL)
   U->>C: approve
@@ -275,7 +276,7 @@ make install
 ```bash
 make infra PROJECT_ID=<project> REGION=us-central1
 ```
-This creates the service account and IAM bindings, the `anatel-mcp-url` secret, the buckets, the Model Armor template and the Vertex AI Search data store, then writes `.env.deploy`.
+This creates the service account and IAM bindings, the `anatel-mcp-url` secret, the buckets, the Model Armor template and the Vertex AI Search data store, then writes `deployment/environments/<project>.env`.
 
 ### 2. Run locally
 ```bash
@@ -295,7 +296,7 @@ make deploy-test              # smoke test the remote agent
 make destroy                  # deletes the Agent Engine instance and the infra (the MCP service is kept)
 ```
 
-> **Cost note:** the deployment uses `min_instances=1` to avoid cold starts during demos. Set it to `0` in `deployment/deploy.py` for idle environments.
+> **Cost note:** the deployment uses `min_instances=1` to avoid cold starts during demos. Set `AGENT_MIN_INSTANCES=0` for idle environments.
 
 ---
 
@@ -335,7 +336,40 @@ ROUGE-style lexical matching was deliberately left out: it penalizes correct lon
 
 ---
 
-## 10. Configuration
+## 10. CI/CD
+
+```mermaid
+flowchart LR
+  PR["Pull request"] --> SEC["security<br/>gitleaks + pip-audit"]
+  PR --> TST["test<br/>ruff + unit + IaC syntax"]
+  M["push to main"] --> SEC & TST
+  SEC & TST --> EV["eval<br/>golden dataset gate"]
+  EV --> APR{"production<br/>environment approval"}
+  APR --> DEP["deploy<br/>idempotent update by display name"]
+  DEP --> E2E["e2e smoke<br/>all user stories"]
+```
+
+| Pipeline | File | Identity | Stages |
+|---|---|---|---|
+| **GitHub Actions** | [`.github/workflows/ci.yaml`](.github/workflows/ci.yaml) | Keyless **Workload Identity Federation**, restricted to this repository | security → test → eval → *(approval)* → deploy → e2e |
+| **Cloud Build** | [`cloudbuild.yaml`](cloudbuild.yaml) | Dedicated `anatel-advisor-deployer` SA (not the default Cloud Build SA) | lint → unit → eval → deploy → e2e (results archived to GCS) |
+
+Design choices:
+- **Separation of duties:** `infra/setup.sh` (resources and IAM) is applied by a platform admin. The pipeline identity can only evaluate, deploy and smoke-test; it cannot change IAM or create infrastructure.
+- **Idempotent deploys:** the Agent Engine instance is discovered by `display_name`, so every run updates the same instance. No local state file.
+- **GitOps-friendly configuration:** non-secret resource names live in `deployment/environments/<project>.env`. Secrets stay in Secret Manager.
+- **Quality gates:** the golden-dataset eval blocks deployment; the post-deploy E2E runs every user story against the live endpoint.
+
+Bootstrap:
+```bash
+make infra PROJECT_ID=<project>          # resources + runtime SA (admin)
+make cicd  PROJECT_ID=<project>          # deployer SA + WIF pool/provider; prints the GitHub variables to set
+```
+Then, in GitHub, create the `production` environment with required reviewers. For Cloud Build, connect the repository and create the trigger shown at the top of `cloudbuild.yaml`.
+
+---
+
+## 11. Configuration
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -344,6 +378,7 @@ ROUGE-style lexical matching was deliberately left out: it penalizes correct lon
 | `MCP_URL_SECRET_ID` | `anatel-mcp-url` | Secret holding the MCP endpoint |
 | `REPORTS_BUCKET` | — | Destination for approved reports |
 | `MODEL_ARMOR_TEMPLATE` | — | Full template resource name |
+| `AGENT_MIN_INSTANCES` / `AGENT_MAX_INSTANCES` | `1` / `5` | Agent Engine autoscaling |
 | `GUARDRAILS_FAIL_MODE` | `open` | `closed` blocks turns if Model Armor is unreachable |
 | `VERTEX_SEARCH_DATASTORE` | — | Methodology KB data store |
 | `PII_REDACTION_MODE` | `regex` (local), `dlp` (deployed) | Redaction engine |
@@ -351,7 +386,7 @@ ROUGE-style lexical matching was deliberately left out: it penalizes correct lon
 
 ---
 
-## 11. Limitations & roadmap
+## 12. Limitations & roadmap
 
 **Limitations**
 - When Anatel's open-data files are unreachable, the MCP server falls back to a seeded snapshot (`metadados_fonte.origem_leitura = "fallback_seed_ram"`). The agent records the data origin in every `tool_outcome` log.

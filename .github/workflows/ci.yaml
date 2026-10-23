@@ -1,15 +1,20 @@
-name: ci
+name: ci-cd
 
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
-  id-token: write   # Workload Identity Federation (no JSON keys)
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # ------------------------------------------------------------------ CI (no cloud access)
   security:
     runs-on: ubuntu-latest
     steps:
@@ -35,11 +40,49 @@ jobs:
         run: make lint
       - name: Unit tests
         run: make test
+      - name: IaC syntax
+        run: bash -n infra/setup.sh && bash -n infra/setup_cicd.sh && bash -n infra/teardown.sh
 
-  eval-and-deploy:
+  # ------------------------------------------------------------------ CD (keyless via WIF)
+  # Infrastructure (infra/setup.sh) is applied by a platform admin, not by the
+  # pipeline: the deployer identity cannot change IAM or create resources.
+  eval:
     needs: [security, test]
-    if: github.ref == 'refs/heads/main' && vars.GCP_WIF_PROVIDER != ''
+    if: github.event_name != 'pull_request' && vars.GCP_WIF_PROVIDER != ''
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GOOGLE_CLOUD_PROJECT: ${{ vars.GCP_PROJECT_ID }}
+      GOOGLE_CLOUD_LOCATION: us-central1
+      GOOGLE_GENAI_USE_VERTEXAI: "TRUE"
+    steps:
+      - uses: actions/checkout@v4
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+          # Also mint a short-lived OIDC ID token for the private Cloud Run MCP
+          # (impersonated credentials cannot mint ID tokens via ADC).
+          token_format: id_token
+          id_token_audience: ${{ vars.MCP_AUDIENCE }}
+          id_token_include_email: true
+      - uses: astral-sh/setup-uv@v3
+      - run: uv venv .venv --python 3.12 && uv pip install --python .venv/bin/python -e ".[dev]"
+      - name: Golden-dataset evaluation (regression gate)
+        env:
+          MCP_ID_TOKEN: ${{ steps.auth.outputs.id_token }}
+        run: make eval
+
+  deploy:
+    needs: eval
+    runs-on: ubuntu-latest
+    environment: production  # add required reviewers in Settings > Environments
+    permissions:
+      contents: read
+      id-token: write
     env:
       GOOGLE_CLOUD_PROJECT: ${{ vars.GCP_PROJECT_ID }}
       GOOGLE_CLOUD_LOCATION: us-central1
@@ -50,12 +93,16 @@ jobs:
         with:
           workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
           service_account: ${{ vars.GCP_DEPLOY_SA }}
-      - uses: google-github-actions/setup-gcloud@v2
       - uses: astral-sh/setup-uv@v3
       - run: uv venv .venv --python 3.12 && uv pip install --python .venv/bin/python -e ".[dev]"
-      - name: Golden-dataset evaluation (regression gate)
-        run: make eval
-      - name: Provision infra (idempotent)
-        run: make infra PROJECT_ID=${{ vars.GCP_PROJECT_ID }}
-      - name: Deploy to Agent Engine
-        run: make deploy
+      - name: Deploy to Agent Engine (idempotent update by display name)
+        run: make deploy PROJECT_ID=${{ vars.GCP_PROJECT_ID }}
+      - name: Post-deploy smoke test (all user stories)
+        run: make e2e PROJECT_ID=${{ vars.GCP_PROJECT_ID }}
+      - name: Upload E2E results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results
+          path: e2e_results.json
+          if-no-files-found: ignore
