@@ -25,7 +25,7 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - uses: astral-sh/setup-uv@v3
+      - uses: astral-sh/setup-uv@v7
       - name: Dependency vulnerability audit (pip-audit)
         # Accepted risks are tracked in SECURITY.md ("Known accepted vulnerabilities").
         run: uvx pip-audit -r requirements.txt --strict --ignore-vuln CVE-2026-114603
@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
+      - uses: astral-sh/setup-uv@v7
       - run: uv venv .venv --python 3.12 && uv pip install --python .venv/bin/python -e ".[dev]"
       - name: Lint
         run: make lint
@@ -69,7 +69,7 @@ jobs:
           token_format: id_token
           id_token_audience: ${{ vars.MCP_AUDIENCE }}
           id_token_include_email: true
-      - uses: astral-sh/setup-uv@v3
+      - uses: astral-sh/setup-uv@v7
       - run: uv venv .venv --python 3.12 && uv pip install --python .venv/bin/python -e ".[dev]"
       - name: Golden-dataset evaluation (regression gate)
         env:
@@ -93,7 +93,7 @@ jobs:
         with:
           workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
           service_account: ${{ vars.GCP_DEPLOY_SA }}
-      - uses: astral-sh/setup-uv@v3
+      - uses: astral-sh/setup-uv@v7
       - run: uv venv .venv --python 3.12 && uv pip install --python .venv/bin/python -e ".[dev]"
       - name: Deploy to Agent Engine (idempotent update by display name)
         run: make deploy PROJECT_ID=${{ vars.GCP_PROJECT_ID }}
