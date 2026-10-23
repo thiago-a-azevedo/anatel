@@ -173,7 +173,8 @@ async def main():
     ]
     results = await asyncio.gather(*tasks, return_exceptions=True)
     clean = [r if not isinstance(r, Exception) else {"story": "error", "error": repr(r)} for r in results]
-    json.dump({"run": RUN, "engine": NAME, "results": clean}, open(OUT, "w"), ensure_ascii=False, indent=2, default=str)
+    with Path(OUT).open("w", encoding="utf-8") as fh:
+        json.dump({"run": RUN, "engine": NAME, "results": clean}, fh, ensure_ascii=False, indent=2, default=str)
     for r in clean:
         if "turns" not in r:
             print("ERROR", r)

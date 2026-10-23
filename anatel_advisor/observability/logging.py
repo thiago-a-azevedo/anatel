@@ -27,11 +27,17 @@ _CONFIGURED = False
 
 
 class PiiRedactionFilter(logging.Filter):
-    """Scrubs PII from the message and from every ``extra=`` field."""
+    """Scrubs PII from the message, formatting args and every ``extra=`` field."""
 
     def filter(self, record: logging.LogRecord) -> bool:  # noqa: A003
         if isinstance(record.msg, str):
             record.msg = redact_regex(record.msg)
+        if record.args:
+            record.args = (
+                tuple(redact_obj(a) for a in record.args)
+                if isinstance(record.args, tuple)
+                else redact_obj(record.args)
+            )
         for key, value in list(vars(record).items()):
             if key not in _RESERVED:
                 setattr(record, key, redact_obj(value))

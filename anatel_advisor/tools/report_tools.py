@@ -22,6 +22,7 @@ from google.adk.tools.tool_context import ToolContext
 from pydantic import ValidationError
 
 from ..config import get_settings
+from ..observability.tracing import get_tracer
 from ..pii import redact
 from ..schemas import (
     BRAZILIAN_UFS,
@@ -34,6 +35,7 @@ from ..schemas import (
     RankedOperator,
     RankingResult,
     RankingWeights,
+    SupportedFiltersResult,
 )
 
 logger = logging.getLogger(__name__)
@@ -48,19 +50,19 @@ def list_supported_anatel_filters() -> dict:
     operator in free text and you are unsure of the exact code to send.
 
     Returns:
-      A dict with the valid ``ufs`` (state codes + 'BR'), ``servicos`` (alias ->
-      Anatel service code), ``operadoras`` (known operator names), ``indicadores_rede``
-      (network indicator ids) and ``topicos_glossario`` (glossary topics).
+      A ``SupportedFiltersResult`` dict with the valid ``ufs`` (state codes + 'BR'),
+      ``servicos`` (alias -> Anatel service code), ``operadoras`` (known operator
+      names), ``indicadores_rede`` (network indicator ids) and ``topicos_glossario``
+      (glossary topics).
     """
-    return {
-        "status": "success",
-        "ufs": sorted(BRAZILIAN_UFS),
-        "servicos": SERVICE_ALIASES,
-        "operadoras": list(KNOWN_OPERATORS),
-        "indicadores_rede": list(NETWORK_INDICATORS),
-        "topicos_glossario": list(GLOSSARY_TOPICS),
-        "formato_ano_mes": "YYYY-MM (ex.: 2026-09)",
-    }
+    return SupportedFiltersResult(
+        ufs=sorted(BRAZILIAN_UFS),
+        servicos=SERVICE_ALIASES,
+        operadoras=list(KNOWN_OPERATORS),
+        indicadores_rede=list(NETWORK_INDICATORS),
+        topicos_glossario=list(GLOSSARY_TOPICS),
+        formato_ano_mes="YYYY-MM (ex.: 2026-09)",
+    ).model_dump()
 
 
 def calculate_weighted_operator_ranking(
@@ -140,9 +142,14 @@ def calculate_weighted_operator_ranking(
         RankedOperator(position=i + 1, operadora=n, weighted_score_0_10=s, pillars_used=p)
         for i, (n, s, p) in enumerate(scored)
     ]
-    return RankingResult(
-        status="success", ranking=ranking, weights_normalized={k: round(v, 3) for k, v in norm.items()}
-    ).model_dump()
+    with get_tracer().start_as_current_span("anatel.tool.calculate_weighted_operator_ranking") as span:
+        span.set_attribute("anatel.ranking.operators_count", len(ranking))
+        span.set_attribute("anatel.ranking.leader", ranking[0].operadora)
+        return RankingResult(
+            status="success",
+            ranking=ranking,
+            weights_normalized={k: round(v, 3) for k, v in norm.items()},
+        ).model_dump()
 
 
 def export_report_to_gcs(title: str, markdown_report: str, tool_context: ToolContext) -> dict:
@@ -190,9 +197,12 @@ def export_report_to_gcs(title: str, markdown_report: str, tool_context: ToolCon
     try:
         from google.cloud import storage
 
-        blob = storage.Client(project=settings.project_id).bucket(settings.reports_bucket).blob(blob_name)
-        blob.metadata = {"title": redact(title) or "", "report_id": report_id}
-        blob.upload_from_string(redact(body) or "", content_type="text/markdown; charset=utf-8")
+        with get_tracer().start_as_current_span("anatel.tool.export_report_to_gcs") as span:
+            span.set_attribute("anatel.report.id", report_id)
+            span.set_attribute("anatel.report.bucket", settings.reports_bucket)
+            blob = storage.Client(project=settings.project_id).bucket(settings.reports_bucket).blob(blob_name)
+            blob.metadata = {"title": redact(title) or "", "report_id": report_id}
+            blob.upload_from_string(redact(body) or "", content_type="text/markdown; charset=utf-8")
     except Exception as exc:  # noqa: BLE001
         logger.error("report_export_failed", extra={"report_id": report_id, "error": str(exc)})
         return ExportReportResult(

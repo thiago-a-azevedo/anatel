@@ -21,7 +21,7 @@ from google.adk.tools.tool_context import ToolContext
 from pydantic import ValidationError
 
 from ..observability.logging import get_logger
-from ..schemas import MCP_ARG_SCHEMAS
+from ..schemas import MCP_ARG_SCHEMAS, McpToolOutput
 
 logger = get_logger(__name__)
 
@@ -94,7 +94,8 @@ class ToolGuardPlugin(BasePlugin):
     ):
         if tool.name not in MCP_ARG_SCHEMAS or not isinstance(result, dict):
             return None
-        if result.get("isError"):
+        parsed = McpToolOutput.model_validate(result)
+        if parsed.isError:
             return {
                 **result,
                 "recovery_hint": (
@@ -102,8 +103,7 @@ class ToolGuardPlugin(BasePlugin):
                     "arguments (uf, servico, operadora, ano_mes) and retry once."
                 ),
             }
-        structured = result.get("structuredContent")
-        if isinstance(structured, dict) and structured.get("registros") == []:
+        if parsed.structuredContent and parsed.structuredContent.registros == []:
             return {
                 **result,
                 "recovery_hint": (

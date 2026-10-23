@@ -19,6 +19,7 @@ from google.adk.memory.base_memory_service import BaseMemoryService, SearchMemor
 from google.adk.plugins.base_plugin import BasePlugin
 
 from .observability.logging import get_logger
+from .observability.tracing import get_tracer
 from .pii import redact
 
 if TYPE_CHECKING:
@@ -64,14 +65,18 @@ class RedactingMemoryService(BaseMemoryService):
 
 
 async def _generate_memories(memory_service: BaseMemoryService, session: Session) -> None:
-    try:
-        await memory_service.add_session_to_memory(session)
-        logger.info(
-            "memory_generation_done",
-            extra={"session_id": session.id, "user_id": session.user_id, "events": len(session.events)},
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("memory_generation_failed", extra={"session_id": session.id, "error": str(exc)})
+    with get_tracer().start_as_current_span("anatel.memory.consolidate") as span:
+        span.set_attribute("anatel.session.id", session.id)
+        span.set_attribute("anatel.session.events", len(session.events))
+        try:
+            await memory_service.add_session_to_memory(session)
+            logger.info(
+                "memory_generation_done",
+                extra={"session_id": session.id, "user_id": session.user_id, "events": len(session.events)},
+            )
+        except Exception as exc:  # noqa: BLE001
+            span.record_exception(exc)
+            logger.warning("memory_generation_failed", extra={"session_id": session.id, "error": str(exc)})
 
 
 class MemoryPlugin(BasePlugin):

@@ -24,23 +24,24 @@ from google.adk.tools.mcp_tool import McpToolset
 from google.adk.tools.mcp_tool.mcp_session_manager import StreamableHTTPConnectionParams
 
 from ..config import get_settings, is_managed_runtime
-from ..secrets import get_secret
+from ..secrets import SecretNotFoundError, get_secret
 
 logger = logging.getLogger(__name__)
 
 #: Every tool exposed by the Anatel MCP server, grouped by purpose.
 ANATEL_DATA_TOOLS: list[str] = [
-    "consultar_rqual_iqs",
-    "consultar_indicadores_rede",
-    "consultar_reclamacoes_ida",
-    "consultar_pesquisa_satisfacao",
-    "comparar_operadoras",
+    "consultar_rqual_iqs",          # RQUAL quality seal (A-E) and IQS score (0-10)
+    "consultar_indicadores_rede",   # speed compliance, latency, jitter, loss, availability
+    "consultar_reclamacoes_ida",    # Anatel Consumidor complaints and IDA score (0-100)
+    "consultar_pesquisa_satisfacao",  # annual ISG perceived satisfaction survey (0-10)
+    "comparar_operadoras",          # cross-pillar comparison and consolidated ranking
 ]
 ANATEL_REFERENCE_TOOLS: list[str] = [
-    "consultar_glossario_metodologia_anatel",
-    "buscar_datasets_ckan_anatel",
+    "consultar_glossario_metodologia_anatel",  # regulatory glossary and methodology
+    "buscar_datasets_ckan_anatel",             # Anatel open-data CKAN catalog search
 ]
 ALL_ANATEL_TOOLS: list[str] = ANATEL_DATA_TOOLS + ANATEL_REFERENCE_TOOLS
+_OFFLINE_PLACEHOLDER_URL = "https://mcp-anatel.placeholder.invalid/mcp"
 
 _TOKEN_TTL_SECONDS = 45 * 60  # Google ID tokens live 60 min; refresh early.
 
@@ -127,7 +128,13 @@ class _IdTokenProvider:
 
 
 def _resolve_mcp_url() -> str:
-    url = get_secret(get_settings().mcp_url_secret_id, env_override="ANATEL_MCP_URL")
+    try:
+        url = get_secret(get_settings().mcp_url_secret_id, env_override="ANATEL_MCP_URL")
+    except SecretNotFoundError:
+        if is_managed_runtime():
+            raise  # fail fast on Agent Engine / Cloud Run
+        logger.warning("mcp_url_unresolved_offline_placeholder")
+        return _OFFLINE_PLACEHOLDER_URL
     return url if url.rstrip("/").endswith("/mcp") else url.rstrip("/") + "/mcp"
 
 

@@ -57,6 +57,11 @@ def _result_summary(result: Any) -> dict[str, Any]:
     }
 
 
+def _tool_call_id(tool: BaseTool, ctx: ToolContext) -> str:
+    """Returns a stable correlation id shared by ``before_tool`` and ``after_tool``."""
+    return getattr(ctx, "function_call_id", None) or f"{getattr(ctx, 'invocation_id', 'inv')}:{tool.name}"
+
+
 class ObservabilityPlugin(BasePlugin):
     """Logs intent before and outcome after every agent, model and tool step."""
 
@@ -67,6 +72,8 @@ class ObservabilityPlugin(BasePlugin):
 
     # ---------------------------------------------------------------- agents
     async def before_agent_callback(self, *, agent: BaseAgent, callback_context: CallbackContext):
+        if len(self._agent_started) > 10_000:
+            self._agent_started.clear()
         key = f"{callback_context.invocation_id}:{agent.name}"
         self._agent_started[key] = time.perf_counter()
         logger.info("agent_start", extra={"event": "agent_start", **_ids(callback_context)})
@@ -128,10 +135,13 @@ class ObservabilityPlugin(BasePlugin):
     async def before_tool_callback(
         self, *, tool: BaseTool, tool_args: dict[str, Any], tool_context: ToolContext
     ):
-        call_id = tool_context.function_call_id or f"{tool.name}-{time.time_ns()}"
+        if len(self._tool_started) > 10_000:
+            self._tool_started.clear()
+        call_id = _tool_call_id(tool, tool_context)
         self._tool_started[call_id] = time.perf_counter()
         span = trace.get_current_span()
         span.set_attribute("anatel.tool.intent", tool.name)
+        span.add_event("tool_intent", {"tool": tool.name, "call_id": call_id})
         logger.info(
             "tool_intent",
             extra={
@@ -152,17 +162,25 @@ class ObservabilityPlugin(BasePlugin):
         tool_context: ToolContext,
         result: dict[str, Any],
     ):
-        call_id = tool_context.function_call_id or ""
+        call_id = _tool_call_id(tool, tool_context)
         started = self._tool_started.pop(call_id, None)
+        latency_ms = round((time.perf_counter() - started) * 1000, 1) if started else None
         summary = _result_summary(result)
-        trace.get_current_span().set_attribute("anatel.tool.outcome", str(summary.get("status")))
+        span = trace.get_current_span()
+        span.set_attribute("anatel.tool.outcome", str(summary.get("status")))
+        if latency_ms is not None:
+            span.set_attribute("anatel.tool.latency_ms", latency_ms)
+        span.add_event(
+            "tool_outcome",
+            {"tool": tool.name, "call_id": call_id, "status": str(summary.get("status"))},
+        )
         logger.info(
             "tool_outcome",
             extra={
                 "event": "tool_outcome",
                 "call_id": call_id,
                 "tool": tool.name,
-                "latency_ms": round((time.perf_counter() - started) * 1000, 1) if started else None,
+                "latency_ms": latency_ms,
                 **summary,
                 **_ids(tool_context),
             },
@@ -179,7 +197,7 @@ class ObservabilityPlugin(BasePlugin):
     ):
         # after_tool_callback still runs afterwards and records the final outcome;
         # here we only capture the raw exception for debugging.
-        call_id = tool_context.function_call_id or ""
+        call_id = _tool_call_id(tool, tool_context)
         started = self._tool_started.get(call_id)
         logger.error(
             "tool_error",

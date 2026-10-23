@@ -170,3 +170,31 @@ def test_only_coordinator_can_transfer():
     for agent in walk(root_agent):
         if isinstance(agent, LlmAgent) and agent is not root_agent:
             assert agent.disallow_transfer_to_parent and agent.disallow_transfer_to_peers, agent.name
+
+
+def test_no_proactive_save_offer_in_instructions():
+    """User requirement: the agent must never offer to save reports to GCS unless asked."""
+    from anatel_advisor.prompts import CONSTITUTION, PUBLISHER_INSTRUCTION
+
+    assert "Never proactively offer or suggest saving/exporting" in CONSTITUTION
+    assert "Do not offer, suggest or ask about\n  saving, exporting or sharing" in PUBLISHER_INSTRUCTION
+
+
+def test_mcp_url_uses_offline_placeholder_outside_managed_runtime(monkeypatch):
+    from anatel_advisor.secrets import SecretNotFoundError, get_secret
+    from anatel_advisor.tools import mcp_anatel
+
+    monkeypatch.delenv("ANATEL_MCP_URL", raising=False)
+    monkeypatch.delenv("GOOGLE_CLOUD_AGENT_ENGINE_ID", raising=False)
+    monkeypatch.delenv("K_SERVICE", raising=False)
+    monkeypatch.setattr(mcp_anatel, "get_secret", lambda *_a, **_kw: (_ for _ in ()).throw(SecretNotFoundError("no secret")))
+    assert mcp_anatel._resolve_mcp_url() == mcp_anatel._OFFLINE_PLACEHOLDER_URL
+
+    monkeypatch.setenv("GOOGLE_CLOUD_AGENT_ENGINE_ID", "123")
+    try:
+        mcp_anatel._resolve_mcp_url()
+        raise AssertionError("Expected SecretNotFoundError in managed runtime")
+    except SecretNotFoundError:
+        pass
+    finally:
+        get_secret.cache_clear()

@@ -4,7 +4,7 @@ Runs the full multi-agent system (Gemini + live Anatel MCP) on every golden case
 checks:
 
 * tool trajectory (did the right agent call the right MCP tool, in order?);
-* response similarity (ROUGE) and LLM-as-judge semantic match.
+* LLM-as-judge semantic response match (``final_response_match_v2``).
 
 Run with ``make eval`` (requires GCP credentials). Excluded from ``make test``.
 Equivalent CLI: ``adk eval anatel_advisor tests/eval/data/anatel_golden.evalset.json

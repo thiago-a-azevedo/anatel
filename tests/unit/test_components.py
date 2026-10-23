@@ -188,3 +188,32 @@ async def test_guardrail_ignores_hitl_confirmation_payload():
         callback_context=SimpleNamespace(invocation_id="inv-y"), llm_request=None
     )
     assert resp is None
+
+
+def test_pii_filter_redacts_percent_formatted_args():
+    import logging
+
+    from anatel_advisor.observability.logging import CloudJsonFormatter, PiiRedactionFilter
+
+    record = logging.LogRecord(
+        name="t", level=logging.INFO, pathname="x.py", lineno=1,
+        msg="contato %s cpf %s", args=("joao@example.com", "123.456.789-09"), exc_info=None,
+    )
+    PiiRedactionFilter().filter(record)
+    line = CloudJsonFormatter().format(record)
+    assert "joao@example.com" not in line and "123.456.789-09" not in line
+    assert "[REDACTED_EMAIL_ADDRESS]" in line and "[REDACTED_BRAZIL_CPF_NUMBER]" in line
+
+
+async def test_observability_correlates_intent_and_outcome_without_call_id():
+    from anatel_advisor.plugins.observability import ObservabilityPlugin
+
+    plugin = ObservabilityPlugin()
+    tool = SimpleNamespace(name="consultar_rqual_iqs")
+    ctx = SimpleNamespace(function_call_id=None, invocation_id="inv-1", user_id="u1", agent_name="a1")
+    await plugin.before_tool_callback(tool=tool, tool_args={"uf": "SP"}, tool_context=ctx)
+    assert "inv-1:consultar_rqual_iqs" in plugin._tool_started
+    await plugin.after_tool_callback(
+        tool=tool, tool_args={"uf": "SP"}, tool_context=ctx, result={"status": "success"}
+    )
+    assert plugin._tool_started == {}

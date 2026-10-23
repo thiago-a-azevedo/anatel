@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 
-from .config import get_settings
+from .config import get_settings, is_managed_runtime
 from .memory import RedactingMemoryService
 
 
@@ -27,7 +27,15 @@ def build_memory_service():
 
 
 def build_session_service():
-    """Persistent, managed sessions in Vertex AI Agent Engine."""
+    """Persistent sessions: SQL database when ``SESSION_SERVICE_URI`` is set locally,
+    or managed ``VertexAiSessionService`` on Vertex AI Agent Engine.
+    """
+    db_uri = os.getenv("SESSION_SERVICE_URI")
+    if db_uri and not is_managed_runtime():
+        from google.adk.sessions import DatabaseSessionService
+
+        return DatabaseSessionService(db_url=db_uri)
+
     from google.adk.sessions import VertexAiSessionService
 
     settings = get_settings()

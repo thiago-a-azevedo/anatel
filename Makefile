@@ -3,7 +3,7 @@ REGION     ?= us-central1
 PY         ?= .venv/bin/python
 GCLOUD     ?= gcloud
 
-.PHONY: install lint test eval e2e playground run tf-bootstrap tf-init infra-plan infra verify-infra infra-destroy deploy deploy-test destroy
+.PHONY: install lint test eval adk-eval e2e playground run tf-bootstrap tf-init infra-plan infra verify-infra infra-destroy deploy adk-deploy deploy-test destroy
 
 install:            ## Create venv and install deps
 	uv venv .venv --python 3.12 && uv pip install --python $(PY) -e ".[dev]"
@@ -16,6 +16,9 @@ test:               ## Unit tests (offline)
 
 eval:               ## Golden-dataset evaluation (Gemini + live MCP)
 	$(PY) -m pytest tests/eval -m eval -q
+
+adk-eval:           ## Golden-dataset evaluation via ADK CLI
+	.venv/bin/adk eval anatel_advisor tests/eval/data/anatel_golden.evalset.json --config_file_path tests/eval/data/test_config.json
 
 e2e:                ## Run every user story against the deployed Agent Engine
 	GOOGLE_CLOUD_PROJECT=$(PROJECT_ID) $(PY) tests/e2e/run_remote_stories.py
@@ -50,6 +53,9 @@ infra-destroy:      ## Destroy ALL infrastructure managed by Terraform
 
 deploy:             ## Deploy/update on Vertex AI Agent Engine (idempotent)
 	GOOGLE_CLOUD_PROJECT=$(PROJECT_ID) $(PY) deployment/deploy.py
+
+adk-deploy:         ## Deploy via ADK CLI (`adk deploy agent_engine`)
+	.venv/bin/adk deploy agent_engine --project=$(PROJECT_ID) --region=$(REGION) --staging_bucket=gs://$(PROJECT_ID)-anatel-advisor-staging --display_name=anatel-telecom-advisor anatel_advisor
 
 deploy-test:        ## Smoke-test the deployed agent
 	GOOGLE_CLOUD_PROJECT=$(PROJECT_ID) $(PY) deployment/deploy.py --test "Compare Brisanet, Claro e Vivo em banda larga no CE"

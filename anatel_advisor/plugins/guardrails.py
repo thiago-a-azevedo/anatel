@@ -30,6 +30,7 @@ from google.genai import types
 
 from ..config import get_settings
 from ..observability.logging import get_logger
+from ..observability.tracing import get_tracer
 
 logger = get_logger(__name__)
 
@@ -128,10 +129,14 @@ class GuardrailsPlugin(BasePlugin):
             return None  # e.g. HITL confirmation (function_response) - nothing to screen
         invocation_id = invocation_context.invocation_id
         layer = None
-        if detect_prompt_injection(text):
-            layer = "local_rules"
-        elif await asyncio.to_thread(_model_armor_blocks, text, is_prompt=True):
-            layer = "model_armor"
+        with get_tracer().start_as_current_span("anatel.guardrails.screen_prompt") as span:
+            if detect_prompt_injection(text):
+                layer = "local_rules"
+            elif await asyncio.to_thread(_model_armor_blocks, text, is_prompt=True):
+                layer = "model_armor"
+            span.set_attribute("anatel.guardrails.blocked", bool(layer))
+            if layer:
+                span.set_attribute("anatel.guardrails.layer", layer)
         if layer:
             self._blocked_invocations.add(invocation_id)
             if len(self._blocked_invocations) > 10_000:

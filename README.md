@@ -225,10 +225,10 @@ sequenceDiagram
 | | Human-in-the-loop | `FunctionTool(export_report_to_gcs, require_confirmation=True)`; the coordinator is the only agent allowed to write |
 | **Observability & Tracing** | Structured logging | [`observability/logging.py`](anatel_advisor/observability/logging.py): Cloud Logging JSON with severity, source location and trace correlation |
 | | Intent vs. outcome | [`plugins/observability.py`](anatel_advisor/plugins/observability.py): `tool_intent` / `tool_outcome` linked by `call_id` (latency, status, records, data origin); the same pattern for agents and LLM calls |
-| | Distributed tracing | OpenTelemetry → Cloud Trace (`AdkApp(enable_tracing=True)`); every log line carries `logging.googleapis.com/trace` |
+| | Distributed tracing | [`observability/tracing.py`](anatel_advisor/observability/tracing.py): OpenTelemetry → Cloud Trace (`AdkApp(enable_tracing=True)` + custom spans via `get_tracer().start_as_current_span`); every log line carries `logging.googleapis.com/trace` |
 | | PII redaction | [`pii.py`](anatel_advisor/pii.py): **Cloud DLP** (CPF, CNPJ, email, phone, card, names) with a regex fallback, applied to all logs and to memory before storage |
-| **Infrastructure & CI/CD** | Evaluation suite | [`tests/eval`](tests/eval): golden dataset scored on tool trajectory and LLM-judge semantic match; [`tests/unit`](tests/unit) offline suite |
-| | Infrastructure as Code | [`terraform/`](terraform): declarative Terraform with remote GCS state for all resources (APIs, identities, IAM, Secret Manager, buckets, Model Armor, Vertex AI Search, WIF, log metrics, alerts, dashboard, budget); `make verify-infra` drift check; [`ci.yaml`](.github/workflows/ci.yaml) / [`cloudbuild.yaml`](cloudbuild.yaml) pipelines |
+| **Infrastructure & CI/CD** | Evaluation suite | [`tests/eval`](tests/eval): golden dataset scored on tool trajectory and LLM-judge semantic match (`adk eval` / `AgentEvaluator`); [`tests/unit`](tests/unit) offline suite |
+| | Infrastructure as Code | [`terraform/`](terraform): declarative Terraform with remote GCS state for all resources (APIs, identities, IAM, Secret Manager, buckets, Model Armor, Vertex AI Search, WIF, log metrics, alerts, dashboard, budget); `make verify-infra` drift check; ADK CLI (`adk web`, `adk run`, `adk eval`, `adk deploy agent_engine`); [`ci.yaml`](.github/workflows/ci.yaml) / [`cloudbuild.yaml`](cloudbuild.yaml) pipelines |
 | | Secret management | [`secrets.py`](anatel_advisor/secrets.py): Secret Manager; workload identity only; dev overrides disabled in production; no keys in the repo |
 
 ---
@@ -282,16 +282,18 @@ make infra        PROJECT_ID=<project>   # apply
 ```
 Create `terraform/environments/<project>.tfvars` and `<project>.backend.hcl` first (copy the `nprod-demo` ones). Operator-specific identifiers (alert email, billing account) go in the git-ignored `<project>.private.tfvars` (see `private.tfvars.example`). Terraform also writes `deployment/environments/<project>.env`, which the deploy script consumes.
 
-### 2. Run locally
+### 2. Run locally (ADK CLI)
 ```bash
 cp .env.example .env          # set your project id
 make test                     # offline unit tests
-make playground               # ADK Web on http://localhost:8000 (shows the HITL approval UI)
+make playground               # adk web --session_service_uri sqlite:///.adk/sessions.db .
+make run                      # adk run anatel_advisor
 ```
 
 ### 3. Deploy to Vertex AI Agent Engine
 ```bash
-make deploy                   # source-based deploy (create or update)
+make deploy                   # idempotent source-based deploy (create or update by display_name)
+make adk-deploy               # equivalent ADK CLI: adk deploy agent_engine ...
 make deploy-test              # smoke test the remote agent
 ```
 
@@ -307,7 +309,8 @@ make destroy                  # deletes the Agent Engine instance, then `terrafo
 ## 8. Evaluation
 
 ```bash
-make eval      # live Gemini + MCP; runs in CI as a gate before deploy
+make eval      # pytest wrapper around AgentEvaluator (runs in CI as a gate before deploy)
+make adk-eval  # adk eval anatel_advisor tests/eval/data/anatel_golden.evalset.json --config_file_path tests/eval/data/test_config.json
 ```
 
 | Metric | What it checks | Threshold |

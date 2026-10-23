@@ -105,49 +105,75 @@ class _McpArgs(BaseModel):
 
 
 class RqualIqsArgs(_McpArgs):
-    operadora: str | None = None
-    servico: str | None = None
-    uf: str | None = None
-    municipio: str | None = None
-    ano_mes: str | None = None
-    limite: int = Field(default=25, ge=1, le=200)
+    """Input schema for ``consultar_rqual_iqs`` (RQUAL quality seal A-E and IQS score 0-10)."""
+
+    operadora: str | None = Field(default=None, description="Operator name, e.g. 'Vivo' or 'Brisanet'.")
+    servico: str | None = Field(default=None, description="Anatel service code: SMP, SCM, STFC or SEAC.")
+    uf: str | None = Field(default=None, description="2-letter Brazilian state code or 'BR'.")
+    municipio: str | None = Field(default=None, description="Municipality name (optional).")
+    ano_mes: str | None = Field(default=None, description="Reference period in YYYY-MM format.")
+    limite: int = Field(default=25, ge=1, le=200, description="Max records to return (1-200).")
 
 
 class NetworkIndicatorsArgs(RqualIqsArgs):
-    indicador: Literal[NETWORK_INDICATORS] | None = None  # type: ignore[valid-type]
+    """Input schema for ``consultar_indicadores_rede`` (speed, latency, jitter, loss, availability)."""
+
+    indicador: Literal[NETWORK_INDICATORS] | None = Field(  # type: ignore[valid-type]
+        default=None,
+        description="Network indicator id (velocidade_download, latencia, jitter, perda_pacotes, disponibilidade).",
+    )
 
 
 class ComplaintsIdaArgs(_McpArgs):
-    operadora: str | None = None
-    servico: str | None = None
-    uf: str | None = None
-    motivo: str | None = None
-    ano_mes: str | None = None
-    limite: int = Field(default=25, ge=1, le=200)
+    """Input schema for ``consultar_reclamacoes_ida`` (Anatel Consumidor complaints and IDA 0-100)."""
+
+    operadora: str | None = Field(default=None, description="Operator name, e.g. 'TIM'.")
+    servico: str | None = Field(default=None, description="Anatel service code: SMP, SCM, STFC or SEAC.")
+    uf: str | None = Field(default=None, description="2-letter Brazilian state code or 'BR'.")
+    motivo: str | None = Field(default=None, description="Complaint reason filter (optional).")
+    ano_mes: str | None = Field(default=None, description="Reference period in YYYY-MM format.")
+    limite: int = Field(default=25, ge=1, le=200, description="Max records to return (1-200).")
 
 
 class SatisfactionSurveyArgs(_McpArgs):
-    operadora: str | None = None
-    servico: str | None = None
-    uf: str | None = None
-    ano: int | None = Field(default=None, ge=2015, le=2100)
-    limite: int = Field(default=25, ge=1, le=200)
+    """Input schema for ``consultar_pesquisa_satisfacao`` (annual ISG satisfaction survey 0-10)."""
+
+    operadora: str | None = Field(default=None, description="Operator name.")
+    servico: str | None = Field(default=None, description="Anatel service code: SMP, SCM, STFC or SEAC.")
+    uf: str | None = Field(default=None, description="2-letter Brazilian state code or 'BR'.")
+    ano: int | None = Field(default=None, ge=2015, le=2100, description="Survey year (2015-2100).")
+    limite: int = Field(default=25, ge=1, le=200, description="Max records to return (1-200).")
 
 
 class CompareOperatorsArgs(_McpArgs):
-    servico: str = "SCM"
-    uf: str = "BR"
-    municipio: str | None = None
-    operadoras: list[str] | None = Field(default=None, max_length=10)
+    """Input schema for ``comparar_operadoras`` (cross-pillar comparison and consolidated ranking)."""
+
+    servico: str = Field(default="SCM", description="Anatel service code: SMP, SCM, STFC or SEAC.")
+    uf: str = Field(default="BR", description="2-letter Brazilian state code or 'BR'.")
+    municipio: str | None = Field(default=None, description="Municipality name (optional).")
+    operadoras: list[str] | None = Field(
+        default=None, max_length=10, description="Optional list of up to 10 operators to compare."
+    )
 
 
 class CkanSearchArgs(_McpArgs):
-    termo_busca: str = Field(default="qualidade rqual consumidor", min_length=2, max_length=200)
-    limite: int = Field(default=10, ge=1, le=50)
+    """Input schema for ``buscar_datasets_ckan_anatel`` (Anatel open-data CKAN catalog search)."""
+
+    termo_busca: str = Field(
+        default="qualidade rqual consumidor",
+        min_length=2,
+        max_length=200,
+        description="Search terms for the Anatel open-data portal.",
+    )
+    limite: int = Field(default=10, ge=1, le=50, description="Max datasets to return (1-50).")
 
 
 class GlossaryArgs(_McpArgs):
-    topico: Literal[GLOSSARY_TOPICS] | None = "geral"  # type: ignore[valid-type]
+    """Input schema for ``consultar_glossario_metodologia_anatel`` (regulatory glossary)."""
+
+    topico: Literal[GLOSSARY_TOPICS] | None = Field(  # type: ignore[valid-type]
+        default="geral", description="Glossary topic identifier."
+    )
 
 
 MCP_ARG_SCHEMAS: dict[str, type[BaseModel]] = {
@@ -161,9 +187,54 @@ MCP_ARG_SCHEMAS: dict[str, type[BaseModel]] = {
 }
 
 
+class McpSourceMetadata(BaseModel):
+    """Provenance metadata returned inside ``structuredContent.metadados_fonte``."""
+
+    model_config = ConfigDict(extra="allow")
+
+    pilar: str | None = Field(default=None, description="Anatel quality pillar identifier.")
+    origem_leitura: str | None = Field(default=None, description="Data origin (live or seed fallback).")
+    periodo_referencia: str | None = Field(default=None, description="Reference period (YYYY-MM or year).")
+
+
+class McpStructuredContent(BaseModel):
+    """Structured payload inside an Anatel MCP tool response."""
+
+    model_config = ConfigDict(extra="allow")
+
+    registros: list[dict] | None = Field(default=None, description="Returned data rows.")
+    metadados_fonte: McpSourceMetadata | None = Field(default=None, description="Source provenance.")
+
+
+class McpToolOutput(BaseModel):
+    """Output schema for responses returned by the remote Anatel MCP server."""
+
+    model_config = ConfigDict(extra="allow")
+
+    isError: bool = Field(default=False, description="True when the MCP server reports a tool error.")
+    structuredContent: McpStructuredContent | None = Field(
+        default=None, description="Structured tool output payload."
+    )
+    recovery_hint: str | None = Field(
+        default=None, description="Actionable instruction added when recovery is needed."
+    )
+
+
 # --------------------------------------------------------------------------------------
 # Local tool schemas
 # --------------------------------------------------------------------------------------
+
+
+class SupportedFiltersResult(BaseModel):
+    """Output schema for ``list_supported_anatel_filters``."""
+
+    status: Literal["success"] = "success"
+    ufs: list[str] = Field(description="Valid 2-letter Brazilian state codes plus 'BR'.")
+    servicos: dict[str, str] = Field(description="Free-text alias -> canonical Anatel service code.")
+    operadoras: list[str] = Field(description="Canonical operator names known to the dataset.")
+    indicadores_rede: list[str] = Field(description="Valid network indicator identifiers.")
+    topicos_glossario: list[str] = Field(description="Valid glossary topic identifiers.")
+    formato_ano_mes: str = Field(description="Expected YYYY-MM period format.")
 
 
 class OperatorScores(BaseModel):
@@ -178,19 +249,23 @@ class OperatorScores(BaseModel):
 class RankingWeights(BaseModel):
     """Weights (any positive numbers; they are normalized to sum to 1)."""
 
-    iqs: float = Field(default=0.35, ge=0)
-    ida: float = Field(default=0.30, ge=0)
-    isg: float = Field(default=0.35, ge=0)
+    iqs: float = Field(default=0.35, ge=0, description="Weight for RQUAL/IQS (default 0.35).")
+    ida: float = Field(default=0.30, ge=0, description="Weight for Anatel Consumidor/IDA (default 0.30).")
+    isg: float = Field(default=0.35, ge=0, description="Weight for Satisfaction/ISG (default 0.35).")
 
 
 class RankedOperator(BaseModel):
-    position: int
-    operadora: str
-    weighted_score_0_10: float
-    pillars_used: list[str]
+    """Single row in the computed operator ranking."""
+
+    position: int = Field(ge=1, description="1-based rank position.")
+    operadora: str = Field(description="Operator name in uppercase.")
+    weighted_score_0_10: float = Field(ge=0, le=10, description="Normalized weighted score (0-10).")
+    pillars_used: list[str] = Field(description="Pillars included in this operator's score.")
 
 
 class RankingResult(BaseModel):
+    """Output schema for ``calculate_weighted_operator_ranking``."""
+
     status: Literal["success", "error"]
     ranking: list[RankedOperator] = Field(default_factory=list)
     weights_normalized: dict[str, float] = Field(default_factory=dict)
@@ -199,6 +274,8 @@ class RankingResult(BaseModel):
 
 
 class ExportReportResult(BaseModel):
+    """Output schema for ``export_report_to_gcs``."""
+
     status: Literal["success", "error", "rejected"]
     gcs_uri: str | None = None
     report_id: str | None = None
@@ -212,6 +289,8 @@ class ExportReportResult(BaseModel):
 
 
 class CriticIssue(BaseModel):
+    """Single grounding or policy issue flagged by ``quality_critic``."""
+
     claim: str = Field(description="The exact sentence or number from the draft being challenged.")
     problem: Literal[
         "number_not_in_tool_output",
