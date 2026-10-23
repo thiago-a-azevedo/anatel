@@ -76,7 +76,7 @@ class ToolGuardPlugin(BasePlugin):
         except ValidationError as exc:
             logger.warning(
                 "tool_args_rejected",
-                extra={"tool": tool.name, "args": tool_args, "errors": exc.errors(include_url=False)},
+                extra={"tool": tool.name, "rejected_args": tool_args, "errors": exc.errors(include_url=False)},
             )
             return _validation_hint(tool.name, exc)
         # Normalize in place so the MCP server receives canonical values.
