@@ -7,10 +7,14 @@ For each tool call the plugin emits two correlated JSON log records:
 * ``tool_outcome`` - AFTER execution: status, latency, result size, error type and
   whether the result was empty, linked by the same ``call_id``.
 
-The same pattern is applied to agent runs (``agent_start`` / ``agent_end``) and model
-calls (``llm_request`` / ``llm_response`` with token usage), so the Cloud Logging
-query ``jsonPayload.invocation_id="<id>"`` replays a full request, and the
+The same pattern is applied to the whole invocation (``invocation_start`` /
+``invocation_end``), to agent runs (``agent_start`` / ``agent_end``) and to model calls
+(``llm_request`` / ``llm_response`` with token usage, or ``llm_error``), so the Cloud
+Logging query ``jsonPayload.invocation_id="<id>"`` replays a full request, and the
 ``logging.googleapis.com/trace`` field jumps straight to the Cloud Trace waterfall.
+
+Message *content* is deliberately never logged (only sizes and counts): the records are
+safe to keep long-term, and the PII filter scrubs the few free-text fields (tool args).
 """
 
 from __future__ import annotations
@@ -21,6 +25,7 @@ from typing import Any
 
 from google.adk.agents.base_agent import BaseAgent
 from google.adk.agents.callback_context import CallbackContext
+from google.adk.agents.invocation_context import InvocationContext
 from google.adk.models.llm_request import LlmRequest
 from google.adk.models.llm_response import LlmResponse
 from google.adk.plugins.base_plugin import BasePlugin
@@ -40,6 +45,21 @@ def _ids(ctx: CallbackContext | ToolContext) -> dict[str, Any]:
         "user_id": getattr(ctx, "user_id", None),
         "agent": getattr(ctx, "agent_name", None),
     }
+
+
+def _invocation_ids(ctx: InvocationContext) -> dict[str, Any]:
+    return {
+        "invocation_id": getattr(ctx, "invocation_id", None),
+        "session_id": getattr(getattr(ctx, "session", None), "id", None),
+        "user_id": getattr(ctx, "user_id", None),
+        "agent": getattr(getattr(ctx, "agent", None), "name", None),
+    }
+
+
+def _content_chars(content: Any) -> int:
+    """Size of a ``types.Content`` in characters (content itself is never logged)."""
+    parts = getattr(content, "parts", None) or []
+    return sum(len(getattr(p, "text", None) or "") for p in parts)
 
 
 def _result_summary(result: Any) -> dict[str, Any]:
@@ -63,12 +83,58 @@ def _tool_call_id(tool: BaseTool, ctx: ToolContext) -> str:
 
 
 class ObservabilityPlugin(BasePlugin):
-    """Logs intent before and outcome after every agent, model and tool step."""
+    """Logs intent before and outcome after every invocation, agent, model and tool step."""
 
     def __init__(self) -> None:
         super().__init__(name="observability")
         self._tool_started: dict[str, float] = {}
         self._agent_started: dict[str, float] = {}
+        self._run_started: dict[str, float] = {}
+
+    # ----------------------------------------------------------- invocations
+    async def before_run_callback(self, *, invocation_context: InvocationContext):
+        if len(self._run_started) > 10_000:
+            self._run_started.clear()
+        self._run_started[invocation_context.invocation_id] = time.perf_counter()
+        logger.info(
+            "invocation_start",
+            extra={
+                "event": "invocation_start",
+                "user_message_chars": _content_chars(
+                    getattr(invocation_context, "user_content", None)
+                ),
+                **_invocation_ids(invocation_context),
+            },
+        )
+        return None
+
+    async def after_run_callback(self, *, invocation_context: InvocationContext):
+        started = self._run_started.pop(invocation_context.invocation_id, None)
+        logger.info(
+            "invocation_end",
+            extra={
+                "event": "invocation_end",
+                "latency_ms": round((time.perf_counter() - started) * 1000, 1) if started else None,
+                **_invocation_ids(invocation_context),
+            },
+        )
+        return None
+
+    async def on_run_error_callback(
+        self, *, invocation_context: InvocationContext, error: Exception
+    ):
+        started = self._run_started.pop(invocation_context.invocation_id, None)
+        logger.error(
+            "invocation_error",
+            extra={
+                "event": "invocation_error",
+                "error_type": type(error).__name__,
+                "error": str(error),
+                "latency_ms": round((time.perf_counter() - started) * 1000, 1) if started else None,
+                **_invocation_ids(invocation_context),
+            },
+        )
+        return None
 
     # ---------------------------------------------------------------- agents
     async def before_agent_callback(self, *, agent: BaseAgent, callback_context: CallbackContext):
@@ -86,6 +152,23 @@ class ObservabilityPlugin(BasePlugin):
             "agent_end",
             extra={
                 "event": "agent_end",
+                "latency_ms": round((time.perf_counter() - started) * 1000, 1) if started else None,
+                **_ids(callback_context),
+            },
+        )
+        return None
+
+    async def on_agent_error_callback(
+        self, *, agent: BaseAgent, callback_context: CallbackContext, error: Exception
+    ):
+        key = f"{callback_context.invocation_id}:{agent.name}"
+        started = self._agent_started.pop(key, None)
+        logger.error(
+            "agent_error",
+            extra={
+                "event": "agent_error",
+                "error_type": type(error).__name__,
+                "error": str(error),
                 "latency_ms": round((time.perf_counter() - started) * 1000, 1) if started else None,
                 **_ids(callback_context),
             },
@@ -130,6 +213,21 @@ class ObservabilityPlugin(BasePlugin):
             },
         )
         return None
+
+    async def on_model_error_callback(
+        self, *, callback_context: CallbackContext, llm_request: LlmRequest, error: Exception
+    ):
+        logger.error(
+            "llm_error",
+            extra={
+                "event": "llm_error",
+                "model": llm_request.model,
+                "error_type": type(error).__name__,
+                "error": str(error),
+                **_ids(callback_context),
+            },
+        )
+        return None  # let ADK's retry policy / error handling decide
 
     # ---------------------------------------------------------------- tools
     async def before_tool_callback(

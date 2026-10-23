@@ -110,7 +110,7 @@ flowchart LR
       MEM[("Agent Platform Memory Bank")]
     end
     GEM["Gemini 2.5 Flash / Pro"]
-    MCP["Cloud Run: mcp-anatel<br/>private, OIDC ID token"]
+    MCP["Cloud Run: mcp-anatel<br/>private, OIDC ID token<br/>SA: mcp-anatel-sa"]
     SM["Secret Manager<br/>anatel-mcp-url"]
     MA["Model Armor<br/>guardrails template"]
     DLP["Cloud DLP<br/>PII redaction"]
@@ -118,8 +118,8 @@ flowchart LR
     GCS[("GCS reports")]
     STG[("GCS staging<br/>KB docs + CI artifacts")]
     LOG["Cloud Logging"]
-    TR["Cloud Trace"]
-    MON["Cloud Monitoring<br/>4 log metrics, 4 alerts, dashboard"]
+    TR["Cloud Trace<br/>one trace: agent + MCP"]
+    MON["Cloud Monitoring<br/>7 log metrics, 6 alerts, dashboard"]
     BUD["Billing Budget"]
     GEN["Gemini Enterprise<br/>Anatel connector"]
   end
@@ -136,6 +136,7 @@ flowchart LR
   APP --> SES
   APP -.async (DLP-redacted).-> MEM
   APP --> LOG & TR
+  MCP --> LOG & TR
   LOG --> MON
   BUD --> MON
   MCP --> ANATEL
@@ -222,8 +223,8 @@ sequenceDiagram
 │   ├── Dockerfile            # multi-stage non-root container image
 │   ├── scripts/              # Cloud Run deployment + IAM script (deploy_cloud_run.sh)
 │   ├── src/                  # StreamableHTTP (/mcp), 7 Anatel tools, Polars RAM cache + seed fallback
-│   └── tests/                # 13 unit & StreamableHTTP protocol tests
-├── tests/unit/               # 47 offline ADK + MCP contract tests (60 total with mcp_anatel/tests)
+│   └── tests/                # 22 unit, StreamableHTTP protocol and observability tests
+├── tests/unit/               # 50 offline ADK + MCP contract tests (72 total with mcp_anatel/tests)
 ├── tests/eval/               # golden dataset + ADK AgentEvaluator
 ├── tests/e2e/                # remote E2E harness (E1-E10 against Agent Runtime)
 ├── terraform/                # IaC: all cloud resources, remote GCS state, per-env tfvars
@@ -253,10 +254,10 @@ sequenceDiagram
 | | Model routing | [`config.py`](anatel_advisor/config.py) `ModelRouting`: Flash for routing, collection, critique and summarization; **Pro for analysis**; retries with exponential backoff |
 | | Guardrails | [`plugins/guardrails.py`](anatel_advisor/plugins/guardrails.py): **Model Armor** on prompts and responses + local injection rules + configurable fail mode; critic self-evaluation |
 | | Human-in-the-loop | `FunctionTool(export_report_to_gcs, require_confirmation=True)`; the coordinator is the only agent allowed to write |
-| **Observability & Tracing** | Structured logging | [`observability/logging.py`](anatel_advisor/observability/logging.py): Cloud Logging JSON with severity, source location and trace correlation |
-| | Intent vs. outcome | [`plugins/observability.py`](anatel_advisor/plugins/observability.py): `tool_intent` / `tool_outcome` linked by `call_id` (latency, status, records, data origin); the same pattern for agents and LLM calls |
-| | Distributed tracing | [`observability/tracing.py`](anatel_advisor/observability/tracing.py): OpenTelemetry → Cloud Trace (`AdkApp(enable_tracing=True)` + custom spans via `get_tracer().start_as_current_span`); every log line carries `logging.googleapis.com/trace` |
-| | PII redaction | [`pii.py`](anatel_advisor/pii.py): **Cloud DLP** (CPF, CNPJ, email, phone, card, names) with a regex fallback, applied to all logs and to memory before storage |
+| **Observability & Tracing** | Structured logging | [`observability/logging.py`](anatel_advisor/observability/logging.py) and [`mcp_anatel/src/core/logging.py`](mcp_anatel/src/core/logging.py): Cloud Logging JSON with severity, source location and trace correlation on both services |
+| | Intent vs. outcome | [`plugins/observability.py`](anatel_advisor/plugins/observability.py): `tool_intent` / `tool_outcome` linked by `call_id` (latency, status, records, data origin), plus invocation, agent and LLM start/end/error pairs; [`mcp_anatel/src/core/observability.py`](mcp_anatel/src/core/observability.py) repeats the pattern server-side (`mcp_tool_intent` / `mcp_tool_outcome`) |
+| | Distributed tracing | [`observability/tracing.py`](anatel_advisor/observability/tracing.py) + [`mcp_anatel/src/core/tracing.py`](mcp_anatel/src/core/tracing.py): OpenTelemetry → Cloud Trace on both services; the W3C `traceparent` travels in the MCP `_meta` so the Cloud Run `tools/call` span is a child of the agent's `execute_tool` span (`invocation` → `agent_run` → `call_llm` / `execute_tool` → `MCP send tools/call` → `tools/call <tool>`); every log line carries `logging.googleapis.com/trace` |
+| | PII redaction | [`pii.py`](anatel_advisor/pii.py): **Cloud DLP** (CPF, CNPJ, email, phone, card, names) with a regex fallback, applied to all logs and to memory before storage; no message content in spans (`ADK_CAPTURE_MESSAGE_CONTENT_IN_SPANS=false`); regex scrubber on the MCP server logs |
 | **Infrastructure & CI/CD** | Evaluation suite | [`tests/eval`](tests/eval): golden dataset scored on tool trajectory and LLM-judge semantic match (`adk eval` / `AgentEvaluator`); [`tests/unit`](tests/unit) offline suite |
 | | Infrastructure as Code | [`terraform/`](terraform): declarative Terraform with remote GCS state for all resources (APIs, identities, IAM, Secret Manager, buckets, Model Armor, Agent Search, WIF, log metrics, alerts, dashboard, budget); `make verify-infra` drift check; ADK CLI (`adk web`, `adk run`, `adk eval`, `adk deploy agent_engine`); [`ci.yaml`](.github/workflows/ci.yaml) / [`cloudbuild.yaml`](cloudbuild.yaml) pipelines |
 | | Secret management | [`secrets.py`](anatel_advisor/secrets.py): Secret Manager; workload identity only; dev overrides disabled in production; no keys in the repo |
@@ -283,11 +284,11 @@ See [SECURITY.md](SECURITY.md) for the full control matrix.
 \* Controlled by the Terraform variable `iam_scope`: `resource` (default, least privilege) binds on the exact resource; `project` is an explicit fallback for operators without `setIamPolicy` on those resources (used in `nprod-demo`, see its tfvars).
 
 **Defense in depth:**
-- **Identity:** private MCP behind OIDC ID tokens; no service-account keys anywhere; CI uses Workload Identity Federation.
+- **Identity:** private MCP behind OIDC ID tokens; no service-account keys anywhere; CI uses Workload Identity Federation; the MCP server runs as its own `mcp-anatel-sa` with telemetry-only roles.
 - **Secrets:** developer overrides (`ANATEL_MCP_URL`, `MCP_ID_TOKEN`) are ignored when running on Agent Runtime.
 - **Input and tools:** Model Armor and local rules screen input; Pydantic validates every tool call; the human approves the only write action.
-- **Data:** PII is redacted with DLP before logs and before memory; OTel GenAI message capture is disabled; buckets use uniform access, public-access prevention and versioning.
-- **Supply chain:** bounded dependency ranges, Dependabot, `pip-audit` and `gitleaks` in CI.
+- **Data:** PII is redacted with DLP before logs and before memory; message content is never copied into OTel spans or GenAI events (telemetry carries ids, sizes and statuses only); buckets use uniform access, public-access prevention and versioning.
+- **Supply chain:** bounded dependency ranges, Dependabot, `pip-audit` (agent and MCP server) and `gitleaks` in CI.
 
 ---
 
@@ -366,13 +367,47 @@ ROUGE-style lexical matching was deliberately left out: it penalizes correct lon
 
 ## 9. Observability
 
+Both services emit the same telemetry contract, so one request can be followed from the user's question to the Anatel dataset read:
+
+```mermaid
+sequenceDiagram
+  participant U as User
+  participant AR as Agent Runtime (anatel_advisor)
+  participant MCP as Cloud Run (mcp_anatel)
+  participant CL as Cloud Logging
+  participant CT as Cloud Trace
+  U->>AR: question
+  AR->>CL: invocation_start (sizes only, no content)
+  Note over AR: spans: invocation → agent_run → call_llm → execute_tool → MCP send tools/call
+  AR->>CL: tool_intent {call_id, tool, redacted args}
+  AR->>MCP: tools/call + _meta.traceparent (W3C, injected by the MCP SDK)
+  Note over MCP: span: tools/call <tool> (SERVER), parented on traceparent
+  MCP->>CL: mcp_tool_intent → mcp_tool_outcome {latency, rows, data_origin}
+  MCP-->>AR: structuredContent
+  AR->>CL: tool_outcome {call_id, status, latency, records, data_origin}
+  AR->>CL: invocation_end {latency_ms}
+  AR-->>CT: all spans (OTLP)
+  MCP-->>CT: server spans (same trace id)
+```
+
+| Pillar | Agent (`anatel_advisor/`) | MCP server (`mcp_anatel/`) |
+|---|---|---|
+| **Structured JSON logging** | [`observability/logging.py`](anatel_advisor/observability/logging.py): one JSON line per record with `severity`, `sourceLocation`, `logging.googleapis.com/trace` + `spanId` (Cloud Logging native fields), all `extra=` fields as `jsonPayload` | [`src/core/logging.py`](mcp_anatel/src/core/logging.py): same contract on Cloud Run; uvicorn access logs disabled (Cloud Run request logs already exist) |
+| **Intent vs. outcome** | [`plugins/observability.py`](anatel_advisor/plugins/observability.py): `invocation_start/end/error`, `agent_start/end/error`, `llm_request/response/error` (tokens, planned tool calls), `tool_intent/outcome/error` linked by `call_id` | [`src/core/observability.py`](mcp_anatel/src/core/observability.py): MCP server middleware emitting `mcp_tool_intent` / `mcp_tool_outcome` (latency, rows, `data_origin` = live HTTP, RAM cache or seed fallback) and annotating the server span |
+| **Distributed tracing** | ADK spans exported via `GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY=true` (traces + logs + metrics); locally `ENABLE_CLOUD_TRACE=true` uses the same `google.adk.telemetry` exporters; custom spans `anatel.guardrails.*`, `anatel.memory.consolidate`, `anatel.tool.*` | [`src/core/tracing.py`](mcp_anatel/src/core/tracing.py): Cloud Trace exporter for the SDK's built-in `tools/call` server spans, parented on the `traceparent` the agent's MCP client injects into `_meta` → **one trace across both services** (proved offline by [`test_observability.py`](mcp_anatel/tests/test_observability.py)) |
+| **PII redaction** | [`pii.py`](anatel_advisor/pii.py): Cloud DLP (+ regex) on every log record and before Memory Bank; message content is never copied into spans (`ADK_CAPTURE_MESSAGE_CONTENT_IN_SPANS=false`, `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=false`) | regex scrubber (`PiiRedactionFilter`) on message, args and `extra=` fields before serialization |
+
+**Where to look**
+
 | What | Where |
 |---|---|
-| Intent / outcome per tool call | Cloud Logging: `jsonPayload.event=("tool_intent" OR "tool_outcome")` |
+| Replay one request | Cloud Logging: `jsonPayload.invocation_id="<id>"` (agent) → `logging.googleapis.com/trace` → Cloud Trace waterfall → `tools/call <tool>` span of `mcp-anatel` → its `mcp_tool_*` logs |
+| Intent / outcome per tool call | `jsonPayload.event=("tool_intent" OR "tool_outcome")` (agent) · `jsonPayload.event=("mcp_tool_intent" OR "mcp_tool_outcome")` (MCP) |
 | Model calls, planned tool calls, tokens | `jsonPayload.event="llm_response"` |
 | Guardrail decisions | `jsonPayload.message="guardrail_blocked"` |
-| End-to-end trace | Cloud Trace: `invocation` → `agent_run` → `call_llm` / `execute_tool` + custom spans (`anatel.guardrails.screen_prompt`, `anatel.memory.consolidate`, `anatel.tool.*`) |
-| Log-based metrics & alerts (`terraform/observability.tf`) | `anatel_advisor/tool_errors`, `anatel_advisor/tool_latency_ms` (p50/p95 distribution), `anatel_advisor/guardrail_blocked`, `anatel_advisor/memory_generation_failed` + 4 alert policies + Cloud Monitoring dashboard |
+| Log-based metrics & alerts ([`terraform/observability.tf`](terraform/observability.tf)) | Agent: `anatel_advisor/tool_errors`, `tool_latency_ms` (p50/p95), `guardrail_blocked`, `memory_generation_failed` · MCP: `mcp_anatel/tool_errors`, `tool_latency_ms` (by `data_origin`), `fallback_reads` · 6 alert policies · one Cloud Monitoring dashboard |
+
+> **Privacy by design:** telemetry carries ids, sizes, counts, latencies and statuses — never prompts or answers. Enabling content capture is an explicit operator opt-in (`ADK_CAPTURE_MESSAGE_CONTENT_IN_SPANS=true`), not the default.
 
 ---
 
@@ -415,7 +450,7 @@ Everything the solution needs is declared in [`terraform/`](terraform). State is
 | [`iam.tf`](terraform/iam.tf) | Runtime and deployer service accounts, least-privilege project roles, resource-scoped bindings (or the explicit project fallback) |
 | [`data_plane.tf`](terraform/data_plane.tf) | Secret (MCP URL derived from the Cloud Run URI), buckets (versioning, public-access prevention, lifecycle and retention), Model Armor template, Agent Search data store, knowledge-base objects plus a re-import whenever their content hash changes |
 | [`cicd.tf`](terraform/cicd.tf) | Workload Identity Federation pool and provider restricted to this repository, deployer impersonation, Cloud Build source access |
-| [`observability.tf`](terraform/observability.tf) | Log-based metrics (guardrail blocks, tool errors, memory failures, tool latency distribution), 4 alert policies, email channel, Cloud Monitoring dashboard |
+| [`observability.tf`](terraform/observability.tf) | Log-based metrics for the agent (guardrail blocks, tool errors, memory failures, tool latency distribution) and for the MCP server (tool errors, latency by data origin, seed-fallback reads), 6 alert policies, email channel, Cloud Monitoring dashboard |
 | [`budget.tf`](terraform/budget.tf) | Monthly budget with alerts at 50 / 90 / 100 % |
 | [`outputs.tf`](terraform/outputs.tf) | Outputs plus the generated `deployment/environments/<project>.env` |
 | [`imports.tf`](terraform/imports.tf) | One-time adoption of resources created before the Terraform migration |

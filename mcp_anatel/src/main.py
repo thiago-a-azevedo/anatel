@@ -5,23 +5,16 @@ import uvicorn
 from fastapi import FastAPI
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from src import __version__
 from src.api.health import router as health_router
 from src.api.mcp_server import mcp
 from src.config import settings
 from src.core.exceptions import register_exception_handlers
 from src.core.logging import setup_logging
+from src.core.tracing import configure_tracing
 
 setup_logging(settings.log_level)
-
-# Inicializa o ASGI app StreamableHTTP do MCPServer (rota padrão: /mcp)
-# host="0.0.0.0", stateless_http=True e json_response=True garantem compatibilidade
-# com Google Cloud Run (.run.app) e Gemini Enterprise Custom MCP Server
-mcp_http_app = mcp.streamable_http_app(
-    streamable_http_path="/mcp",
-    stateless_http=True,
-    json_response=True,
-    host="0.0.0.0",
-)
+configure_tracing()  # no-op outside Cloud Run unless ENABLE_CLOUD_TRACE=true
 
 
 class NormalizeMcpTrailingSlashMiddleware:
@@ -42,47 +35,65 @@ class NormalizeMcpTrailingSlashMiddleware:
         await self.app(scope, receive, send)
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Gerencia o ciclo de vida do SessionManager do StreamableHTTP MCP no Cloud Run."""
-    async with mcp.session_manager.run():
-        yield
+def create_app() -> FastAPI:
+    """Builds the ASGI application (FastAPI + StreamableHTTP MCP mounted at /mcp).
+
+    A factory (instead of module-level wiring) so each application instance owns its
+    own ``StreamableHTTPSessionManager`` - the manager can only be started once, and
+    tests build isolated instances.
+    """
+    # host="0.0.0.0", stateless_http=True e json_response=True garantem compatibilidade
+    # com Google Cloud Run (.run.app) e Gemini Enterprise Custom MCP Server
+    mcp_http_app = mcp.streamable_http_app(
+        streamable_http_path="/mcp",
+        stateless_http=True,
+        json_response=True,
+        host="0.0.0.0",
+    )
+    session_manager = mcp.session_manager  # the manager created by the call above
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        """Gerencia o ciclo de vida do SessionManager do StreamableHTTP MCP no Cloud Run."""
+        async with session_manager.run():
+            yield
+
+    app = FastAPI(
+        title=settings.app_name,
+        version=__version__,
+        description=(
+            "Custom MCP Server (StreamableHTTP /mcp) para consulta em memória aos dados abertos "
+            "da Anatel: Consumidor e Qualidade (RQUAL, IQS, Indicadores de Rede, Reclamações/IDA e Satisfação)."
+        ),
+        docs_url="/docs",
+        redoc_url="/redoc",
+        lifespan=lifespan,
+    )
+
+    app.add_middleware(NormalizeMcpTrailingSlashMiddleware)
+    register_exception_handlers(app)
+
+    # Rotas de integridade obrigatórias para o Google Cloud Run
+    app.include_router(health_router)
+
+    @app.get("/")
+    async def root() -> dict[str, object]:
+        return {
+            "service": settings.app_name,
+            "version": __version__,
+            "environment": settings.environment,
+            "mcp_endpoint": "/mcp",
+            "transport": "StreamableHTTP (stateless JSON-RPC)",
+            "gemini_enterprise_compatible": True,
+            "health_probes": {"liveness": "/healthz", "readiness": "/readyz"},
+        }
+
+    # Monta o StreamableHTTP (/mcp) na raiz após as rotas explícitas do FastAPI
+    app.mount("/", mcp_http_app)
+    return app
 
 
-app = FastAPI(
-    title=settings.app_name,
-    version="0.1.0",
-    description=(
-        "Custom MCP Server (StreamableHTTP /mcp) para consulta em memória aos dados abertos "
-        "da Anatel: Consumidor e Qualidade (RQUAL, IQS, Indicadores de Rede, Reclamações/IDA e Satisfação)."
-    ),
-    docs_url="/docs",
-    redoc_url="/redoc",
-    lifespan=lifespan,
-)
-
-app.add_middleware(NormalizeMcpTrailingSlashMiddleware)
-register_exception_handlers(app)
-
-# Rotas de integridade obrigatórias para o Google Cloud Run
-app.include_router(health_router)
-
-
-@app.get("/")
-async def root() -> dict[str, object]:
-    return {
-        "service": settings.app_name,
-        "version": "0.1.0",
-        "environment": settings.environment,
-        "mcp_endpoint": "/mcp",
-        "transport": "StreamableHTTP (stateless JSON-RPC)",
-        "gemini_enterprise_compatible": True,
-        "health_probes": {"liveness": "/healthz", "readiness": "/readyz"},
-    }
-
-
-# Monta o StreamableHTTP (/mcp) na raiz após as rotas explícitas do FastAPI
-app.mount("/", mcp_http_app)
+app = create_app()
 
 
 def run_cli() -> None:

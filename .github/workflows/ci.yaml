@@ -28,7 +28,9 @@ jobs:
       - uses: astral-sh/setup-uv@v3
       - name: Dependency vulnerability audit (pip-audit)
         # Accepted risks are tracked in SECURITY.md ("Known accepted vulnerabilities").
-        run: uvx pip-audit -r requirements.txt --strict --ignore-vuln CVE-2026-114603
+        run: |
+          uvx pip-audit -r requirements.txt --strict --ignore-vuln CVE-2026-114603
+          uvx pip-audit -r mcp_anatel/requirements.txt --strict
 
   test:
     runs-on: ubuntu-latest

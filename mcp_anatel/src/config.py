@@ -18,6 +18,14 @@ class Settings(BaseSettings):
     port: int = 8080
     log_level: str = "INFO"
 
+    # Observabilidade (Cloud Logging + Cloud Trace)
+    # - google_cloud_project: necessário para correlacionar logs <-> traces
+    #   (campo logging.googleapis.com/trace = projects/<id>/traces/<trace_id>)
+    # - enable_cloud_trace: None = automático (ligado no Cloud Run, via K_SERVICE)
+    google_cloud_project: str = ""
+    enable_cloud_trace: bool | None = None
+    otel_service_name: str = "mcp-anatel"
+
     # Cache em memória (RAM) e limites de resposta para o Gemini Enterprise
     cache_ttl_seconds: int = 3600
     http_timeout_seconds: float = 12.0

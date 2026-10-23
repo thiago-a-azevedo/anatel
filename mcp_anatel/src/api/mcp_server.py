@@ -4,11 +4,15 @@ from typing import Any
 from mcp.server.mcpserver import MCPServer
 
 from src.application.anatel_service import anatel_service
+from src.core.observability import ObservabilityMiddleware
 from src.domain.glossary import get_glossary_content
 from src.infrastructure.fallback_seed import FALLBACK_CKAN_PACKAGES
 
 # Instância oficial MCPServer (mcp 2.x) compatível com StreamableHTTP (/mcp)
-# para o Gemini Enterprise App (Custom MCP Server) e clientes stdio locais
+# para o Gemini Enterprise App (Custom MCP Server) e clientes stdio locais.
+# Middleware: o SDK já abre um span OpenTelemetry por mensagem (OpenTelemetryMiddleware,
+# mais externo); ObservabilityMiddleware roda dentro dele e registra intent/outcome
+# estruturado de cada tools/call (ver src/core/observability.py).
 mcp = MCPServer(
     name="mcp-anatel",
     instructions=(
@@ -17,6 +21,7 @@ mcp = MCPServer(
         "(download, upload, latência, jitter, perda de pacotes, disponibilidade), "
         "Reclamações (Anatel Consumidor / IDA) e Pesquisa de Satisfação e Qualidade Percebida (ISG)."
     ),
+    middleware=[ObservabilityMiddleware()],
 )
 
 

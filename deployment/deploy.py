@@ -86,6 +86,13 @@ def _runtime_env() -> dict[str, str]:
             "GOOGLE_GENAI_USE_VERTEXAI": "TRUE",
             "PII_REDACTION_MODE": "dlp",
             "LOG_LEVEL": "INFO",
+            # Observability: OpenTelemetry traces + logs + metrics -> Cloud Trace /
+            # Cloud Logging / Cloud Monitoring (modern toggle, also visible in the Console).
+            "GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY": "true",
+            # Privacy: never copy prompts, responses or tool arguments into span
+            # attributes / GenAI events. Intent and outcome are logged (PII-redacted)
+            # by the ObservabilityPlugin instead.
+            "ADK_CAPTURE_MESSAGE_CONTENT_IN_SPANS": "false",
             "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT": "false",
         }
     )

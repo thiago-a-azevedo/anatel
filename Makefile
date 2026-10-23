@@ -3,7 +3,7 @@ REGION     ?= us-central1
 PY         ?= .venv/bin/python
 GCLOUD     ?= gcloud
 
-.PHONY: install lint test mcp-test mcp-run mcp-deploy eval adk-eval e2e playground run tf-bootstrap tf-init infra-plan infra verify-infra infra-destroy deploy adk-deploy deploy-test destroy
+.PHONY: install lint test mcp-test mcp-run mcp-deploy eval adk-eval e2e playground playground-otel run tf-bootstrap tf-init infra-plan infra verify-infra infra-destroy deploy adk-deploy deploy-test destroy
 
 install:            ## Create venv and install deps
 	uv venv .venv --python 3.12 && uv pip install --python $(PY) -e ".[dev]"
@@ -35,6 +35,9 @@ e2e:                ## Run every user story against the deployed Agent Runtime (
 
 playground:         ## ADK dev UI with persistent local sessions + memory
 	.venv/bin/adk web --session_service_uri sqlite:///.adk/sessions.db .
+
+playground-otel:    ## Same, exporting OpenTelemetry traces + logs to Google Cloud Observability
+	.venv/bin/adk web --otel_to_cloud --session_service_uri sqlite:///.adk/sessions.db .
 
 run:                ## CLI chat
 	.venv/bin/adk run anatel_advisor

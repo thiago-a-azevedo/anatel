@@ -26,4 +26,6 @@ USER appuser
 
 # Cloud Run injeta $PORT dinamicamente (padrão 8080)
 # 1 worker por instância garante compartilhamento do cache em memória (RAM)
-CMD ["sh", "-c", "exec uvicorn src.main:app --host 0.0.0.0 --port ${PORT} --workers 1"]
+# --no-access-log: o Cloud Run já registra cada requisição (run.googleapis.com/requests);
+# a aplicação emite apenas logs JSON estruturados (intent/outcome por tool, correlacionados ao trace)
+CMD ["sh", "-c", "exec uvicorn src.main:app --host 0.0.0.0 --port ${PORT} --workers 1 --no-access-log"]

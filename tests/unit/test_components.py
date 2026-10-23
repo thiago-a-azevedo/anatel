@@ -219,6 +219,84 @@ async def test_observability_correlates_intent_and_outcome_without_call_id():
     assert plugin._tool_started == {}
 
 
+async def test_observability_logs_invocation_lifecycle_without_message_content(caplog):
+    import logging
+
+    from google.genai import types
+
+    from anatel_advisor.plugins.observability import ObservabilityPlugin
+
+    plugin = ObservabilityPlugin()
+    secret = "meu cpf é 123.456.789-09"
+    inv = SimpleNamespace(
+        invocation_id="inv-9",
+        user_id="u9",
+        session=SimpleNamespace(id="s9"),
+        agent=SimpleNamespace(name="anatel_coordinator"),
+        user_content=types.Content(role="user", parts=[types.Part(text=secret)]),
+    )
+    with caplog.at_level(logging.INFO, logger="anatel_advisor.audit"):
+        await plugin.before_run_callback(invocation_context=inv)
+        await plugin.on_model_error_callback(
+            callback_context=SimpleNamespace(invocation_id="inv-9", agent_name="anatel_coordinator"),
+            llm_request=SimpleNamespace(model="gemini-2.5-flash"),
+            error=RuntimeError("503 overloaded"),
+        )
+        await plugin.after_run_callback(invocation_context=inv)
+    events = [r.event for r in caplog.records]
+    assert events == ["invocation_start", "llm_error", "invocation_end"]
+    start, err, end = caplog.records
+    assert start.user_message_chars == len(secret)
+    assert secret not in caplog.text  # only sizes are logged, never content
+    assert err.error_type == "RuntimeError" and err.model == "gemini-2.5-flash"
+    assert end.latency_ms is not None and end.latency_ms >= 0
+    assert plugin._run_started == {}
+
+
+def test_runtime_telemetry_is_enabled_without_span_content_capture(monkeypatch):
+    """Deployment turns telemetry on through the modern runtime toggle and keeps
+    prompts / responses / tool args out of span attributes (PII never reaches Cloud Trace)."""
+    import importlib
+
+    deploy = importlib.import_module("deployment.deploy")
+    monkeypatch.setenv("REPORTS_BUCKET", "demo-bucket")
+    env = deploy._runtime_env()
+    assert env["GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY"] == "true"
+    assert env["ADK_CAPTURE_MESSAGE_CONTENT_IN_SPANS"] == "false"
+    assert env["OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"] == "false"
+    assert env["PII_REDACTION_MODE"] == "dlp"
+
+    from anatel_advisor.agent_engine_app import agent_engine
+
+    # The legacy flag would force ADK_CAPTURE_MESSAGE_CONTENT_IN_SPANS=true at startup.
+    assert agent_engine._tmpl_attrs.get("enable_tracing") is None
+
+
+def test_tracing_privacy_defaults_and_trace_correlation(monkeypatch):
+    import os
+
+    from opentelemetry.sdk.trace import TracerProvider
+
+    from anatel_advisor.observability.tracing import (
+        CONTENT_CAPTURE_ENV_VARS,
+        apply_privacy_defaults,
+        current_trace_context,
+    )
+
+    for name in CONTENT_CAPTURE_ENV_VARS:
+        monkeypatch.delenv(name, raising=False)
+    apply_privacy_defaults()
+    assert all(os.environ[name] == "false" for name in CONTENT_CAPTURE_ENV_VARS)
+
+    assert current_trace_context() == {}
+    tracer = TracerProvider().get_tracer("test")
+    with tracer.start_as_current_span("invocation") as span:
+        fields = current_trace_context()
+    ctx = span.get_span_context()
+    assert fields["logging.googleapis.com/trace"].endswith(f"/traces/{ctx.trace_id:032x}")
+    assert fields["logging.googleapis.com/spanId"] == f"{ctx.span_id:016x}"
+
+
 def test_all_tools_export_explicit_json_schemas():
     from anatel_advisor.schemas import MCP_ARG_SCHEMAS, TOOL_JSON_SCHEMAS
     from anatel_advisor.tools.mcp_anatel import ALL_ANATEL_TOOLS

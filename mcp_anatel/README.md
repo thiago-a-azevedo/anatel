@@ -55,9 +55,31 @@ python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
 
 ---
 
+## 🔭 Observabilidade (Cloud Logging + Cloud Trace)
+
+O servidor segue o mesmo contrato de telemetria do agente ADK (`anatel_advisor/`), para que **uma única requisição possa ser seguida da pergunta do usuário até a leitura do dataset da Anatel**:
+
+| Pilar | Implementação |
+|---|---|
+| **Logs JSON estruturados** | [`src/core/logging.py`](src/core/logging.py): uma linha JSON por registro com `severity`, `sourceLocation`, `logging.googleapis.com/trace` + `spanId` (campos nativos do Cloud Logging) e todos os campos `extra=` em `jsonPayload`. Em modo `stdio` os logs vão para `stderr` (stdout fica limpo para o MCP). |
+| **Intent vs. outcome** | [`src/core/observability.py`](src/core/observability.py): middleware do `MCPServer` que emite `mcp_tool_intent` (antes) e `mcp_tool_outcome` (depois) para cada `tools/call`, com `request_id`, latência, linhas retornadas e `data_origin` (`http_direto_anatel`, `cache_ram_http` ou `fallback_seed_ram`), e anota o span com `anatel.mcp.*`. |
+| **Tracing distribuído** | O SDK `mcp` 2.x já cria um span `SERVER` por mensagem, **parenteado no `traceparent` W3C recebido em `params._meta`** (injetado automaticamente pelo cliente MCP do agente ADK). [`src/core/tracing.py`](src/core/tracing.py) instala o exporter do Cloud Trace (automático no Cloud Run ou `ENABLE_CLOUD_TRACE=true`), então o span `tools/call <tool>` aparece **dentro do mesmo trace** do agente (`invocation → agent_run → execute_tool → MCP send tools/call`). |
+| **Redação de PII** | `PiiRedactionFilter` (regex: e-mail, CPF, CNPJ, telefone, cartão) aplicado à mensagem, aos args e a todo campo `extra=` antes da serialização. |
+
+Variáveis: `GOOGLE_CLOUD_PROJECT` (correlação log ↔ trace), `ENABLE_CLOUD_TRACE` (`true`/`false`; padrão: ligado no Cloud Run), `LOG_LEVEL`.
+Métricas, alertas e dashboard (`mcp_anatel/tool_errors`, `tool_latency_ms`, `fallback_reads`) são provisionados em [`terraform/observability.tf`](../terraform/observability.tf).
+
+Consulta útil no Cloud Logging:
+```text
+resource.type="cloud_run_revision" AND resource.labels.service_name="mcp-anatel"
+AND jsonPayload.event="mcp_tool_outcome" AND jsonPayload.data_origin="fallback_seed_ram"
+```
+
+---
+
 ## ☁️ Deploy no Google Cloud Run + Configuração no Gemini Enterprise App
 
-Execute o script automatizado em [`scripts/deploy_cloud_run.sh`](scripts/deploy_cloud_run.sh):
+Execute o script automatizado em [`scripts/deploy_cloud_run.sh`](scripts/deploy_cloud_run.sh) (ou `make mcp-deploy PROJECT_ID=<projeto>` na raiz do repositório):
 
 ```bash
 chmod +x scripts/deploy_cloud_run.sh
@@ -65,8 +87,9 @@ PROJECT_ID="seu-projeto-gcp" REGION="us-central1" ./scripts/deploy_cloud_run.sh
 ```
 
 O script realiza:
-1. Build e deploy do container multi-stage `non-root` no **Google Cloud Run**.
-2. Concessão do papel `roles/run.invoker` ao Service Agent oficial do Gemini Enterprise (`service-<PROJECT_NUMBER>@gcp-sa-discoveryengine.iam.gserviceaccount.com`).
+1. Criação (idempotente) da service account de runtime `mcp-anatel-sa` com papéis apenas de telemetria (`roles/cloudtrace.agent`, `roles/logging.logWriter`, `roles/monitoring.metricWriter`).
+2. Build e deploy do container multi-stage `non-root` no **Google Cloud Run** (privado, `--no-allow-unauthenticated`) com `ENABLE_CLOUD_TRACE=true` e `GOOGLE_CLOUD_PROJECT` definidos.
+3. Concessão do papel `roles/run.invoker` ao Service Agent oficial do Gemini Enterprise (`service-<PROJECT_NUMBER>@gcp-sa-discoveryengine.iam.gserviceaccount.com`). A identidade do agente ADK recebe a mesma permissão via Terraform (`terraform/iam.tf`), com escopo no serviço.
 
 ### Passo a Passo no Console do Gemini Enterprise:
 1. No Console do Google Cloud, acesse **Gemini Enterprise** $\rightarrow$ **Data stores** $\rightarrow$ **Create data store**.
