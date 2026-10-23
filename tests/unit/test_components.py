@@ -257,6 +257,7 @@ def test_runtime_telemetry_is_enabled_without_span_content_capture(monkeypatch):
     """Deployment turns telemetry on through the modern runtime toggle and keeps
     prompts / responses / tool args out of span attributes (PII never reaches Cloud Trace)."""
     import importlib
+    import sys
 
     deploy = importlib.import_module("deployment.deploy")
     monkeypatch.setenv("REPORTS_BUCKET", "demo-bucket")
@@ -267,10 +268,27 @@ def test_runtime_telemetry_is_enabled_without_span_content_capture(monkeypatch):
     assert env["OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"] == "NO_CONTENT"
     assert env["PII_REDACTION_MODE"] == "dlp"
 
-    from anatel_advisor.agent_engine_app import agent_engine
+    # The entrypoint must not pass the legacy ``enable_tracing`` flag (it forces
+    # ADK_CAPTURE_MESSAGE_CONTENT_IN_SPANS=true at startup). The real AdkApp resolves
+    # a GCP project with ADC at construction time, so it is replaced by a recorder:
+    # this suite must stay offline (no credentials in CI).
+    import vertexai.agent_engines as agent_engines
 
-    # The legacy flag would force ADK_CAPTURE_MESSAGE_CONTENT_IN_SPANS=true at startup.
-    assert agent_engine._tmpl_attrs.get("enable_tracing") is None
+    captured: dict = {}
+
+    class _RecordingAdkApp:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr(agent_engines, "AdkApp", _RecordingAdkApp)
+    sys.modules.pop("anatel_advisor.agent_engine_app", None)
+    try:
+        importlib.import_module("anatel_advisor.agent_engine_app")
+    finally:
+        sys.modules.pop("anatel_advisor.agent_engine_app", None)
+    assert "enable_tracing" not in captured
+    assert captured["session_service_builder"] is not None
+    assert captured["memory_service_builder"] is not None
 
 
 def test_tracing_privacy_defaults_and_trace_correlation(monkeypatch):
