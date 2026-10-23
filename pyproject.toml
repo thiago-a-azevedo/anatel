@@ -1,0 +1,51 @@
+[project]
+name = "anatel-telecom-advisor"
+version = "0.1.0"
+description = "Multi-agent ADK system that analyzes official Anatel (Brazilian telecom regulator) quality and consumer data through an MCP server."
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+license = { text = "Apache-2.0" }
+dependencies = [
+  "google-adk[mcp,db]>=2.12.0",
+  "google-cloud-aiplatform[agent_engines,adk]>=1.120.0",
+  "google-cloud-logging>=3.11.0",
+  "google-cloud-dlp>=3.25.0",
+  "google-cloud-secret-manager>=2.23.0",
+  "google-cloud-storage>=2.18.0",
+  "google-cloud-modelarmor>=0.2.0",
+  "opentelemetry-exporter-gcp-trace>=1.9.0",
+  "opentelemetry-sdk>=1.30.0",
+  "pydantic>=2.8.0",
+  "aiosqlite>=0.20.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "google-adk[eval]>=2.12.0",
+  "pytest>=8.3.0",
+  "pytest-asyncio>=0.24.0",
+  "ruff>=0.7.0",
+]
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["anatel_advisor*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+  "eval: agent evaluation against the golden dataset (calls Gemini + MCP; needs GCP credentials)",
+]
+addopts = "-m 'not eval'"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]
