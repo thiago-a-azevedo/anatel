@@ -39,12 +39,27 @@ if ! ${GCLOUD} iam service-accounts describe "${RUNTIME_SA}" --project "${PROJEC
     --display-name "mcp-anatel runtime (Cloud Run)" \
     --description "Identidade do servidor MCP da Anatel; escreve apenas traces, logs e metricas."
 fi
+
+# IAM é eventualmente consistente: uma SA recém-criada pode levar alguns segundos
+# para ser aceita em bindings. Repete com backoff antes de desistir.
+bind_role() {
+  local role="$1" attempt
+  for attempt in 1 2 3 4 5 6; do
+    if ${GCLOUD} projects add-iam-policy-binding "${PROJECT_ID}" \
+        --member="serviceAccount:${RUNTIME_SA}" \
+        --role="${role}" \
+        --condition=None \
+        --quiet >/dev/null 2>&1; then
+      return 0
+    fi
+    echo "    binding ${role} ainda não aceito (tentativa ${attempt}/6); aguardando propagação do IAM..."
+    sleep $((attempt * 5))
+  done
+  echo "Erro: não foi possível conceder ${role} a ${RUNTIME_SA}" >&2
+  return 1
+}
 for role in roles/cloudtrace.agent roles/logging.logWriter roles/monitoring.metricWriter; do
-  ${GCLOUD} projects add-iam-policy-binding "${PROJECT_ID}" \
-    --member="serviceAccount:${RUNTIME_SA}" \
-    --role="${role}" \
-    --condition=None \
-    --quiet >/dev/null
+  bind_role "${role}"
 done
 
 echo "==> 3. Realizando deploy do ${SERVICE_NAME} no Google Cloud Run (${REGION})..."

@@ -159,10 +159,29 @@ resource "google_logging_metric" "mcp_fallback_reads" {
 }
 
 # ---------------------------------------------------------------- alert policies
+# Log-based metric descriptors are eventually consistent: an alert policy created
+# right after its metric fails with 404 ("could take up to 10 minutes"). The wait
+# only runs when a metric is (re)created, so steady-state applies are unaffected.
+resource "time_sleep" "metrics_propagation" {
+  create_duration = "120s"
+  triggers = {
+    metrics = join(",", [
+      google_logging_metric.guardrail_blocked.id,
+      google_logging_metric.tool_errors.id,
+      google_logging_metric.memory_failures.id,
+      google_logging_metric.tool_latency.id,
+      google_logging_metric.mcp_tool_errors.id,
+      google_logging_metric.mcp_tool_latency.id,
+      google_logging_metric.mcp_fallback_reads.id,
+    ])
+  }
+}
+
 resource "google_monitoring_alert_policy" "tool_errors" {
   display_name          = "Anatel Advisor - tool errors"
   combiner              = "OR"
   notification_channels = local.notification_channels
+  depends_on            = [time_sleep.metrics_propagation]
   documentation {
     content   = "Tool calls are failing (MCP unreachable, auth or invalid arguments). Check `jsonPayload.event=\"tool_error\"` in Cloud Logging."
     mime_type = "text/markdown"
@@ -187,6 +206,7 @@ resource "google_monitoring_alert_policy" "guardrail_spike" {
   display_name          = "Anatel Advisor - guardrail block spike"
   combiner              = "OR"
   notification_channels = local.notification_channels
+  depends_on            = [time_sleep.metrics_propagation]
   documentation {
     content   = "Unusual number of blocked prompts: possible abuse / prompt-injection campaign."
     mime_type = "text/markdown"
@@ -211,6 +231,7 @@ resource "google_monitoring_alert_policy" "memory_failures" {
   display_name          = "Anatel Advisor - memory generation failing"
   combiner              = "OR"
   notification_channels = local.notification_channels
+  depends_on            = [time_sleep.metrics_propagation]
   conditions {
     display_name = "any memory failure in 15 min"
     condition_threshold {
@@ -231,6 +252,7 @@ resource "google_monitoring_alert_policy" "tool_latency" {
   display_name          = "Anatel Advisor - slow tools (p95)"
   combiner              = "OR"
   notification_channels = local.notification_channels
+  depends_on            = [time_sleep.metrics_propagation]
   conditions {
     display_name = "p95 tool latency > 10 s for 10 min"
     condition_threshold {
@@ -251,6 +273,7 @@ resource "google_monitoring_alert_policy" "mcp_tool_errors" {
   display_name          = "Anatel MCP server - tool errors"
   combiner              = "OR"
   notification_channels = local.notification_channels
+  depends_on            = [time_sleep.metrics_propagation]
   documentation {
     content   = "The Anatel MCP server (Cloud Run `${var.mcp_service_name}`) is returning tool errors. Check `jsonPayload.event=\"mcp_tool_outcome\" AND jsonPayload.status!=\"success\"` and follow `logging.googleapis.com/trace` into Cloud Trace."
     mime_type = "text/markdown"
@@ -275,6 +298,7 @@ resource "google_monitoring_alert_policy" "mcp_fallback_reads" {
   display_name          = "Anatel MCP server - serving seed fallback (Anatel portal unreachable)"
   combiner              = "OR"
   notification_channels = local.notification_channels
+  depends_on            = [time_sleep.metrics_propagation]
   documentation {
     content   = "Most answers are coming from the embedded seed dataset: the Anatel open-data portal is down, slow or changed its files. Data is stale until live reads recover (`jsonPayload.data_origin=\"fallback_seed_ram\"`)."
     mime_type = "text/markdown"
