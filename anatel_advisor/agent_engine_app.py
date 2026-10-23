@@ -1,8 +1,8 @@
-"""Agent Engine entrypoint (source-based deployment).
+"""Agent Runtime entrypoint on Gemini Enterprise Agent Platform (source-based deployment).
 
-Vertex AI Agent Engine imports ``anatel_advisor.agent_engine_app:agent_engine`` from
-the uploaded source package (no pickling), so the app is constructed inside the
-runtime with its own workload identity.
+Agent Runtime (formerly Vertex AI Agent Engine) imports
+``anatel_advisor.agent_engine_app:agent_engine`` from the uploaded source package
+(no pickling), so the app is constructed inside the runtime with its own workload identity.
 """
 
 from vertexai.agent_engines import AdkApp

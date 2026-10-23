@@ -6,8 +6,9 @@ This module wires those spans to Cloud Trace so a request can be followed end-to
 from the user query to the final answer, including the HTTP hop to the Anatel MCP
 server.
 
-* On Vertex AI Agent Engine, tracing is enabled with ``AdkApp(enable_tracing=True)``
-  (see ``deployment/deploy.py``) and this module is a no-op.
+* On Agent Runtime on Gemini Enterprise Agent Platform (formerly Vertex AI Agent Engine),
+  tracing is enabled with ``AdkApp(enable_tracing=True)`` (see ``deployment/deploy.py``)
+  and this module is a no-op.
 * Locally / in CI, set ``ENABLE_CLOUD_TRACE=true`` to export spans to Cloud Trace.
 """
 

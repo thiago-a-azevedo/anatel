@@ -4,7 +4,7 @@ variable "project_id" {
 }
 
 variable "region" {
-  description = "Region for Agent Engine, buckets and Model Armor."
+  description = "Region for Agent Runtime (Gemini Enterprise Agent Platform), buckets and Model Armor."
   type        = string
   default     = "us-central1"
 }

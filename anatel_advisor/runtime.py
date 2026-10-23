@@ -1,7 +1,7 @@
-"""Runtime service builders used when the app runs on Vertex AI Agent Engine.
+"""Runtime service builders used when the app runs on Agent Runtime (Gemini Enterprise Agent Platform).
 
 Kept in a separate module so ``deployment/deploy.py`` can reference them by import
-path (they are cloudpickled by reference and executed inside Agent Engine).
+path (they are cloudpickled by reference and executed inside Agent Runtime).
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from .memory import RedactingMemoryService
 
 
 def build_memory_service():
-    """Vertex AI Memory Bank wrapped with PII redaction."""
+    """Gemini Enterprise Agent Platform Memory Bank wrapped with PII redaction."""
     from google.adk.memory import VertexAiMemoryBankService
 
     settings = get_settings()
@@ -28,7 +28,7 @@ def build_memory_service():
 
 def build_session_service():
     """Persistent sessions: SQL database when ``SESSION_SERVICE_URI`` is set locally,
-    or managed ``VertexAiSessionService`` on Vertex AI Agent Engine.
+    or managed Agent Platform Sessions (``VertexAiSessionService``) on Agent Runtime.
     """
     db_uri = os.getenv("SESSION_SERVICE_URI")
     if db_uri and not is_managed_runtime():

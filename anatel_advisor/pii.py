@@ -12,7 +12,7 @@ Two strategies, selected by ``PII_REDACTION_MODE``:
 Redaction is applied:
 
 1. to every structured log record (:class:`anatel_advisor.observability.logging.PiiRedactionFilter`);
-2. to session events before they are persisted to Vertex AI Memory Bank
+2. to session events before they are persisted to Gemini Enterprise Agent Platform Memory Bank
    (:class:`anatel_advisor.memory.RedactingMemoryService`).
 """
 

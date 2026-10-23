@@ -1,7 +1,7 @@
 """Structured JSON logging compatible with Google Cloud Logging.
 
-Each record is emitted as a single JSON line on stdout. Cloud Logging (Agent Engine,
-Cloud Run, GKE) parses these lines automatically and maps:
+Each record is emitted as a single JSON line on stdout. Cloud Logging (Agent Runtime on
+Gemini Enterprise Agent Platform, Cloud Run, GKE) parses these lines automatically and maps:
 
 * ``severity``                         -> LogEntry.severity
 * ``logging.googleapis.com/trace``     -> LogEntry.trace (links logs to Cloud Trace spans)

@@ -2,7 +2,8 @@
 
 ``root_agent`` is discovered by ``adk web`` / ``adk run``; ``app`` bundles the agent with
 plugins (guardrails, tool guard, observability), history compaction and context
-caching, and is what gets deployed to Vertex AI Agent Engine.
+caching, and is what gets deployed to Agent Runtime on Gemini Enterprise Agent Platform
+(formerly Vertex AI Agent Engine).
 """
 
 from __future__ import annotations

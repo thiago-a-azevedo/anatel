@@ -100,7 +100,7 @@ jobs:
           service_account: ${{ vars.GCP_DEPLOY_SA }}
       - uses: astral-sh/setup-uv@v3
       - run: uv venv .venv --python 3.12 && uv pip install --python .venv/bin/python -e ".[dev]"
-      - name: Deploy to Agent Engine (idempotent update by display name)
+      - name: Deploy to Agent Runtime on Agent Platform (idempotent update by display name)
         run: make deploy PROJECT_ID=${{ vars.GCP_PROJECT_ID }}
       - name: Post-deploy smoke test (all user stories)
         run: make e2e PROJECT_ID=${{ vars.GCP_PROJECT_ID }}

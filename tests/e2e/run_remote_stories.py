@@ -1,4 +1,4 @@
-"""Remote E2E harness: runs every user story (E1-E10) against the deployed Agent Engine.
+"""Remote E2E harness: runs every user story (E1-E10) against the deployed Agent Runtime (Gemini Enterprise Agent Platform).
 
 Usage: make e2e   (requires a deployment and GCP credentials)
 
@@ -22,7 +22,7 @@ RUN = str(int(time.time()))
 client = get_client()
 NAME = find_engine(client)
 if not NAME:
-    sys.exit("No Agent Engine deployment found.")
+    sys.exit("No Agent Runtime deployment found.")
 remote = client.agent_engines.get(name=NAME)
 
 

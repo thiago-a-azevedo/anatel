@@ -3,7 +3,7 @@
 Topology (Coordinator / Dispatcher pattern + Sequential pipeline + LLM-as-judge)::
 
     anatel_coordinator (Flash)            routes by intent, owns HITL export
-    ├── knowledge_agent (Flash)           glossary / methodology (MCP + Vertex AI Search)
+    ├── knowledge_agent (Flash)           glossary / methodology (MCP + Agent Search)
     ├── quick_data_agent (Flash)          single-pillar lookups via MCP
     └── report_pipeline (SequentialAgent)
         ├── data_collector (Flash)        multi-tool MCP retrieval  -> state.collected_data
@@ -51,7 +51,7 @@ _ANALYTICAL = types.GenerateContentConfig(temperature=0.3)
 
 
 def build_knowledge_agent() -> LlmAgent:
-    """Explains Anatel concepts using the MCP glossary and, if configured, Vertex AI Search."""
+    """Explains Anatel concepts using the MCP glossary and, if configured, Agent Search (Vertex AI Search)."""
     settings = get_settings()
     tools: list = [build_anatel_toolset(["consultar_glossario_metodologia_anatel",
                                          "buscar_datasets_ckan_anatel"])]

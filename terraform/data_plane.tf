@@ -1,5 +1,5 @@
 # =============================================================================
-# Data plane: secret, buckets, Model Armor, Vertex AI Search knowledge base
+# Data plane: secret, buckets, Model Armor, Agent Search (Gemini Enterprise Agent Platform) KB
 # =============================================================================
 
 # ---------------------------------------------------------------- Secret Manager
@@ -118,7 +118,7 @@ resource "google_model_armor_template" "guardrails" {
   depends_on = [google_project_service.apis]
 }
 
-# ---------------------------------------------------------------- Vertex AI Search
+# ---------------------------------------------------------------- Agent Search (formerly Vertex AI Search)
 resource "google_discovery_engine_data_store" "methodology" {
   location          = "global"
   data_store_id     = local.datastore_id

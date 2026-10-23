@@ -1,6 +1,6 @@
 # =============================================================================
 # Identities
-#   runtime  - the Agent Engine workload identity (what the agent can do)
+#   runtime  - the Agent Runtime (Gemini Enterprise Agent Platform) workload identity
 #   deployer - the CI/CD identity (eval, deploy, e2e; cannot change IAM/infra)
 # No service-account keys are created anywhere.
 # =============================================================================
@@ -20,10 +20,10 @@ resource "google_service_account" "deployer" {
 # ---------------------------------------------------------------- project roles
 locals {
   runtime_project_roles = toset([
-    "roles/aiplatform.user",                   # Gemini, Sessions, Memory Bank
+    "roles/aiplatform.user",                   # Gemini, Agent Platform Sessions, Memory Bank
     "roles/modelarmor.user",                   # prompt/response sanitization
     "roles/dlp.user",                          # PII redaction
-    "roles/discoveryengine.viewer",            # methodology knowledge base
+    "roles/discoveryengine.viewer",            # Agent Search methodology knowledge base
     "roles/cloudtrace.agent",                  # OpenTelemetry spans
     "roles/logging.logWriter",                 # structured logs
     "roles/monitoring.metricWriter",           # runtime metrics
@@ -31,7 +31,7 @@ locals {
   ])
 
   deployer_project_roles = toset([
-    "roles/aiplatform.user", # create/update Agent Engine, run eval
+    "roles/aiplatform.user", # create/update Agent Runtime, run eval
     "roles/modelarmor.user", # eval runs the agent locally
     "roles/dlp.user",
     "roles/discoveryengine.viewer",

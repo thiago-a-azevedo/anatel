@@ -20,7 +20,7 @@ eval:               ## Golden-dataset evaluation (Gemini + live MCP)
 adk-eval:           ## Golden-dataset evaluation via ADK CLI
 	.venv/bin/adk eval anatel_advisor tests/eval/data/anatel_golden.evalset.json --config_file_path tests/eval/data/test_config.json
 
-e2e:                ## Run every user story against the deployed Agent Engine
+e2e:                ## Run every user story against the deployed Agent Runtime (Agent Platform)
 	GOOGLE_CLOUD_PROJECT=$(PROJECT_ID) $(PY) tests/e2e/run_remote_stories.py
 
 playground:         ## ADK dev UI with persistent local sessions + memory
@@ -51,7 +51,7 @@ verify-infra:       ## Drift check: fails if real infra differs from code
 infra-destroy:      ## Destroy ALL infrastructure managed by Terraform
 	cd $(TF_DIR) && $(TF) destroy -input=false $(TF_VARS)
 
-deploy:             ## Deploy/update on Vertex AI Agent Engine (idempotent)
+deploy:             ## Deploy/update on Agent Runtime (Gemini Enterprise Agent Platform)
 	GOOGLE_CLOUD_PROJECT=$(PROJECT_ID) $(PY) deployment/deploy.py
 
 adk-deploy:         ## Deploy via ADK CLI (`adk deploy agent_engine`)
@@ -60,6 +60,6 @@ adk-deploy:         ## Deploy via ADK CLI (`adk deploy agent_engine`)
 deploy-test:        ## Smoke-test the deployed agent
 	GOOGLE_CLOUD_PROJECT=$(PROJECT_ID) $(PY) deployment/deploy.py --test "Compare as operadoras de banda larga no CE"
 
-destroy:            ## Delete the Agent Engine instance, then all infrastructure
+destroy:            ## Delete the Agent Runtime instance, then all infrastructure
 	GOOGLE_CLOUD_PROJECT=$(PROJECT_ID) $(PY) deployment/deploy.py --delete
 	$(MAKE) infra-destroy PROJECT_ID=$(PROJECT_ID)

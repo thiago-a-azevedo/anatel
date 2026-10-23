@@ -1,9 +1,9 @@
-"""Deploys (or updates) the Anatel Telecom Advisor on Vertex AI Agent Engine (Runtime).
+"""Deploys (or updates) the Anatel Telecom Advisor on Agent Runtime on Gemini Enterprise Agent Platform.
 
 Idempotent and CI-safe:
 
 * The target instance is discovered by ``display_name`` (no local state file), so
-  every CI run updates the same Agent Engine instead of creating a new one.
+  every CI run updates the same Agent Runtime instance instead of creating a new one.
 * Non-secret environment configuration (resource names written by
   Terraform (``terraform/``)) is versioned in ``deployment/environments/<project>.env``.
   Secrets never live there: the MCP endpoint stays in Secret Manager.
@@ -11,7 +11,7 @@ Idempotent and CI-safe:
 Usage:
     python deployment/deploy.py                       # create or update
     python deployment/deploy.py --test "Quais as principais reclamações por operadora no celular em SP?"
-    python deployment/deploy.py --print-name          # resolved engine resource name
+    python deployment/deploy.py --print-name          # resolved runtime resource name
     python deployment/deploy.py --delete
 """
 
@@ -67,13 +67,13 @@ def get_client():
 
 
 def find_engine(client) -> str | None:
-    """Returns the resource name of the Agent Engine with ``DISPLAY_NAME``, if any."""
+    """Returns the resource name of the Agent Runtime instance with ``DISPLAY_NAME``, if any."""
     matches = [
         e.api_resource.name
         for e in client.agent_engines.list(config={"filter": f'display_name="{DISPLAY_NAME}"'})
     ]
     if len(matches) > 1:
-        sys.exit(f"Ambiguous: {len(matches)} Agent Engines named '{DISPLAY_NAME}': {matches}")
+        sys.exit(f"Ambiguous: {len(matches)} Agent Runtime instances named '{DISPLAY_NAME}': {matches}")
     return matches[0] if matches else None
 
 
@@ -108,7 +108,7 @@ def _smoke_test(client, name: str, query: str) -> None:
 
 
 def deploy(client, existing: str | None) -> str:
-    # Source-based deployment: Agent Engine imports the entrypoint from the uploaded
+    # Source-based deployment: Agent Runtime imports the entrypoint from the uploaded
     # package instead of unpickling a local object. The class-method schema is
     # generated locally from the same AdkApp the runtime will build.
     from google.protobuf import json_format
@@ -143,7 +143,7 @@ def deploy(client, existing: str | None) -> str:
         print(f"Updating {existing} ...")
         remote = client.agent_engines.update(name=existing, config=config)
     else:
-        print("Creating Agent Engine instance (this takes a few minutes) ...")
+        print("Creating Agent Runtime instance (this takes a few minutes) ...")
         remote = client.agent_engines.create(config=config)
     return remote.api_resource.name
 

@@ -100,7 +100,7 @@ async def test_memory_is_redacted_before_storage():
 
 
 def test_dev_overrides_ignored_in_managed_runtime(monkeypatch):
-    """On Agent Engine an env override must never replace the Secret Manager value."""
+    """On Agent Runtime (Agent Platform) an env override must never replace the Secret Manager value."""
     import sys
     import types as pytypes
 

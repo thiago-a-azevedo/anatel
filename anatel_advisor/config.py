@@ -62,9 +62,11 @@ class Settings:
     # Reports (HITL-protected export).
     reports_bucket: str = field(default_factory=lambda: os.getenv("REPORTS_BUCKET", ""))
 
-    # Knowledge base (Vertex AI Search data store with Anatel methodology docs).
+    # Knowledge base (Agent Search on Gemini Enterprise Agent Platform, formerly Vertex AI Search).
     vertex_search_datastore: str = field(
-        default_factory=lambda: os.getenv("VERTEX_SEARCH_DATASTORE", "")
+        default_factory=lambda: (
+            os.getenv("AGENT_SEARCH_DATASTORE") or os.getenv("VERTEX_SEARCH_DATASTORE", "")
+        )
     )
 
     # Guardrails.
@@ -104,7 +106,7 @@ def get_settings() -> Settings:
 
 
 def is_managed_runtime() -> bool:
-    """True when running on Vertex AI Agent Engine (or Cloud Run), not a dev machine.
+    """True when running on Agent Runtime on Gemini Enterprise Agent Platform (or Cloud Run).
 
     Used to disable developer-only fallbacks (env-provided tokens, gcloud CLI) in
     production so the workload identity is the only credential path.

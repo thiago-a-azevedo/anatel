@@ -2,7 +2,7 @@
 
 The MCP server (``mcp-anatel``) is a private Cloud Run service: every request must
 carry a Google-signed OIDC ID token whose audience is the service URL, and the caller
-must hold ``roles/run.invoker`` (granted to the Agent Engine identity by
+must hold ``roles/run.invoker`` (granted to the Agent Runtime identity by
 Terraform (``terraform/``)).
 
 The service URL is **not** hardcoded: it is read from Secret Manager
@@ -59,7 +59,7 @@ class _IdTokenProvider:
         # 1) Explicit override - developer machines / CI only, ignored in production.
         if os.getenv("MCP_ID_TOKEN") and not is_managed_runtime():
             return os.environ["MCP_ID_TOKEN"]
-        # 2) Workload identity: Agent Engine / Cloud Run / GCE metadata server or a
+        # 2) Workload identity: Agent Runtime / Cloud Run / GCE metadata server or a
         #    service-account key referenced by GOOGLE_APPLICATION_CREDENTIALS.
         try:
             import google.auth.transport.requests
@@ -78,7 +78,7 @@ class _IdTokenProvider:
             if is_managed_runtime():
                 raise RuntimeError(
                     "Workload identity could not mint an ID token for the Anatel MCP "
-                    f"server ({exc}). Check the Agent Engine service account."
+                    f"server ({exc}). Check the Agent Runtime service account."
                 ) from exc
             logger.info("id_token_workload_identity_unavailable", extra={"error": str(exc)})
         # 3) Local developer fallback: end-user gcloud credentials (never in production).
@@ -133,7 +133,7 @@ def _resolve_mcp_url() -> str:
         url = get_secret(get_settings().mcp_url_secret_id, env_override="ANATEL_MCP_URL")
     except SecretNotFoundError:
         if is_managed_runtime():
-            raise  # fail fast on Agent Engine / Cloud Run
+            raise  # fail fast on Agent Runtime / Cloud Run
         logger.warning("mcp_url_unresolved_offline_placeholder")
         return _OFFLINE_PLACEHOLDER_URL
     return url if url.rstrip("/").endswith("/mcp") else url.rstrip("/") + "/mcp"

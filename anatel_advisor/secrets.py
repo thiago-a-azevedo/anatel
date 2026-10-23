@@ -4,8 +4,8 @@ No credentials or endpoints are hardcoded in this repository. Every sensitive va
 is fetched at runtime with the workload identity (ADC) of the process:
 
 * locally: the developer's ``gcloud auth application-default login`` credentials;
-* on Vertex AI Agent Engine: the Agent Engine service account, which is granted
-  ``roles/secretmanager.secretAccessor`` by Terraform (``terraform/``).
+* on Agent Runtime (Gemini Enterprise Agent Platform): the runtime service account,
+  which is granted ``roles/secretmanager.secretAccessor`` by Terraform (``terraform/``).
 
 For local development only, a value may be overridden with an environment variable
 (e.g. ``ANATEL_MCP_URL``) so contributors without Secret Manager access can still run

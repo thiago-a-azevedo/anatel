@@ -1,12 +1,13 @@
-"""Long-term memory: PII-safe Vertex AI Memory Bank with non-blocking writes.
+"""Long-term memory: PII-safe Agent Platform Memory Bank with non-blocking writes.
 
 * :class:`RedactingMemoryService` wraps any ADK memory service and scrubs PII from
   every event *before* it is sent for memory generation (see :mod:`anatel_advisor.pii`).
 * :class:`MemoryPlugin` hooks ``after_run_callback``, which fires once at the end of
   EVERY invocation regardless of which agent answered (coordinator or any
   specialist reached via ``transfer_to_agent``). Memory extraction/consolidation
-  on Memory Bank is an expensive LLM job, so it is fired as a background
-  ``asyncio`` task and the user receives the answer immediately.
+  on Gemini Enterprise Agent Platform Memory Bank (formerly Vertex AI Memory Bank)
+  is an expensive LLM job, so it is fired as a background ``asyncio`` task and the
+  user receives the answer immediately.
 """
 
 from __future__ import annotations
