@@ -54,3 +54,6 @@ htmlcov/
 *.swp
 .DS_Store
 Thumbs.db
+
+# E2E run output
+e2e_results.json

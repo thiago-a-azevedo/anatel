@@ -71,6 +71,11 @@ class Settings:
     model_armor_template: str = field(
         default_factory=lambda: os.getenv("MODEL_ARMOR_TEMPLATE", "")
     )
+    # "open": allow the turn if Model Armor is unreachable (logged as warning).
+    # "closed": block the turn if Model Armor is unreachable (strictest).
+    guardrails_fail_mode: str = field(
+        default_factory=lambda: os.getenv("GUARDRAILS_FAIL_MODE", "open").lower()
+    )
 
     # Observability.
     pii_redaction_mode: str = field(
@@ -96,3 +101,33 @@ class Settings:
 def get_settings() -> Settings:
     """Returns the process-wide settings singleton."""
     return Settings()
+
+
+def is_managed_runtime() -> bool:
+    """True when running on Vertex AI Agent Engine (or Cloud Run), not a dev machine.
+
+    Used to disable developer-only fallbacks (env-provided tokens, gcloud CLI) in
+    production so the workload identity is the only credential path.
+    """
+    return bool(os.getenv("GOOGLE_CLOUD_AGENT_ENGINE_ID") or os.getenv("K_SERVICE"))
+
+
+def build_model(model_name: str):
+    """Returns a Gemini model with exponential-backoff retries on 429/5xx.
+
+    Retries make the agent resilient to transient quota/availability errors
+    instead of failing the whole multi-agent run.
+    """
+    from google.adk.models import Gemini
+    from google.genai import types
+
+    return Gemini(
+        model=model_name,
+        retry_options=types.HttpRetryOptions(
+            attempts=4,
+            initial_delay=1.0,
+            max_delay=20.0,
+            exp_base=2.0,
+            http_status_codes=[408, 429, 500, 502, 503, 504],
+        ),
+    )

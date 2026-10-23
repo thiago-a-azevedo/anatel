@@ -18,9 +18,10 @@ from __future__ import annotations
 
 from google.adk.agents import LlmAgent, SequentialAgent
 from google.adk.tools import VertexAiSearchTool
+from google.adk.tools.preload_memory_tool import PreloadMemoryTool
 from google.genai import types
 
-from .config import get_settings
+from .config import build_model, get_settings
 from .prompts import (
     ANALYST_INSTRUCTION,
     COLLECTOR_INSTRUCTION,
@@ -60,7 +61,7 @@ def build_knowledge_agent() -> LlmAgent:
     return LlmAgent(
         name="knowledge_agent",
         description="Explains Anatel regulatory concepts, acronyms (RQUAL, IQS, IDA, ISG, SMP, SCM) and methodology.",
-        model=settings.models.router,
+        model=build_model(settings.models.router),
         static_instruction=CONSTITUTION,
         instruction=KNOWLEDGE_INSTRUCTION,
         tools=tools,
@@ -74,10 +75,10 @@ def build_quick_data_agent() -> LlmAgent:
     return LlmAgent(
         name="quick_data_agent",
         description="Fast factual lookups of one Anatel indicator for one operator/place (seal, IQS, complaints, satisfaction, network).",
-        model=settings.models.collector,
+        model=build_model(settings.models.collector),
         static_instruction=CONSTITUTION,
         instruction=QUICK_DATA_INSTRUCTION,
-        tools=[build_anatel_toolset(ANATEL_DATA_TOOLS), list_supported_anatel_filters_tool],
+        tools=[PreloadMemoryTool(), build_anatel_toolset(ANATEL_DATA_TOOLS), list_supported_anatel_filters_tool],
         generate_content_config=_DETERMINISTIC,
     )
 
@@ -89,17 +90,17 @@ def build_report_pipeline() -> SequentialAgent:
     collector = LlmAgent(
         name="data_collector",
         description="Retrieves every Anatel dataset needed for a comparison or report.",
-        model=settings.models.collector,
+        model=build_model(settings.models.collector),
         static_instruction=CONSTITUTION,
         instruction=COLLECTOR_INSTRUCTION,
-        tools=[build_anatel_toolset(ANATEL_DATA_TOOLS), list_supported_anatel_filters_tool],
+        tools=[PreloadMemoryTool(), build_anatel_toolset(ANATEL_DATA_TOOLS), list_supported_anatel_filters_tool],
         output_key="collected_data",
         generate_content_config=_DETERMINISTIC,
     )
     analyst = LlmAgent(
         name="telecom_analyst",
         description="Senior analyst that turns collected Anatel data into grounded insights.",
-        model=settings.models.analyst,
+        model=build_model(settings.models.analyst),
         static_instruction=CONSTITUTION,
         instruction=ANALYST_INSTRUCTION,
         tools=[calculate_weighted_operator_ranking_tool],
@@ -110,18 +111,20 @@ def build_report_pipeline() -> SequentialAgent:
     critic = LlmAgent(
         name="quality_critic",
         description="LLM-as-judge that verifies every figure in the draft against tool outputs.",
-        model=settings.models.critic,
+        model=build_model(settings.models.critic),
         static_instruction=CONSTITUTION,
         instruction=CRITIC_INSTRUCTION,
         output_schema=CriticVerdict,
         output_key="critic_verdict",
-        include_contents="none",
+        # Sees the raw MCP tool responses in the history (the real ground truth),
+        # not only the collector's digest, so correct figures are not rejected.
+        include_contents="default",
         generate_content_config=_DETERMINISTIC,
     )
     publisher = LlmAgent(
         name="report_publisher",
         description="Applies critic fixes and presents the final grounded report.",
-        model=settings.models.critic,
+        model=build_model(settings.models.critic),
         static_instruction=CONSTITUTION,
         instruction=PUBLISHER_INSTRUCTION,
         output_key="final_report",

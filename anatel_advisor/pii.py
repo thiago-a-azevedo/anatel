@@ -3,8 +3,9 @@
 Two strategies, selected by ``PII_REDACTION_MODE``:
 
 * ``dlp``   - Google Cloud Sensitive Data Protection (DLP) ``deidentify_content`` with
-  Brazil-specific info types (CPF, CNPJ) plus email/phone/credit card. Falls back to
-  regex if the API call fails, so redaction never silently turns off.
+  built-in detectors (BRAZIL_CPF_NUMBER, PERSON_NAME, EMAIL_ADDRESS, PHONE_NUMBER,
+  CREDIT_CARD_NUMBER), preceded by the regex pass (adds CNPJ and keeps structured ids atomic). Falls back to regex
+  only if the API call fails, so redaction never silently turns off.
 * ``regex`` - Fast local patterns (default; no network, used in tests and CI).
 * ``off``   - Disabled (not recommended).
 
@@ -44,9 +45,10 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ),
 ]
 
+# Built-in DLP detectors. CNPJ has no built-in detector, so it is covered by the
+# regex pass that always runs before DLP (defense in depth).
 _DLP_INFO_TYPES = [
     "BRAZIL_CPF_NUMBER",
-    "BRAZIL_CNPJ_NUMBER",
     "EMAIL_ADDRESS",
     "PHONE_NUMBER",
     "CREDIT_CARD_NUMBER",
@@ -83,7 +85,9 @@ def redact_dlp(text: str) -> str:  # pragma: no cover - requires GCP
                         ]
                     }
                 },
-                "item": {"value": text},
+                # Regex pass first: structured ids (CNPJ, CPF) are removed atomically
+                # before DLP's probabilistic detectors can split them.
+                "item": {"value": redact_regex(text)},
             }
         )
         return response.item.value

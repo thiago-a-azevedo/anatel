@@ -177,12 +177,14 @@ class ObservabilityPlugin(BasePlugin):
         tool_context: ToolContext,
         error: Exception,
     ):
+        # after_tool_callback still runs afterwards and records the final outcome;
+        # here we only capture the raw exception for debugging.
         call_id = tool_context.function_call_id or ""
-        started = self._tool_started.pop(call_id, None)
+        started = self._tool_started.get(call_id)
         logger.error(
-            "tool_outcome",
+            "tool_error",
             extra={
-                "event": "tool_outcome",
+                "event": "tool_error",
                 "call_id": call_id,
                 "tool": tool.name,
                 "status": "exception",

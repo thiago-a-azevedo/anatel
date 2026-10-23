@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import re
 import uuid
 
 from google.adk.tools import FunctionTool
@@ -182,7 +183,8 @@ def export_report_to_gcs(title: str, markdown_report: str, tool_context: ToolCon
         ).model_dump()
 
     report_id = f"{dt.datetime.now(dt.UTC):%Y%m%dT%H%M%SZ}-{uuid.uuid4().hex[:8]}"
-    user_id = getattr(tool_context, "user_id", None) or "anonymous"
+    # Object names are derived from caller-supplied ids: restrict to a safe charset.
+    user_id = re.sub(r"[^A-Za-z0-9_-]", "_", getattr(tool_context, "user_id", None) or "anonymous")[:64]
     blob_name = f"reports/{user_id}/{report_id}.md"
     body = f"# {title}\n\n{markdown_report}\n"
     try:

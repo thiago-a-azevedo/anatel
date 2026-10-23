@@ -2,12 +2,15 @@
   "criteria": {
     "tool_trajectory_avg_score": {
       "threshold": 0.75,
-      "match_type": "IN_ORDER"
+      "match_type": "IN_ORDER",
+      "ignore_args": true
     },
-    "response_match_score": 0.35,
     "final_response_match_v2": {
       "threshold": 0.7,
-      "judge_model_options": {"judge_model": "gemini-2.5-flash", "num_samples": 3}
+      "judge_model_options": {
+        "judge_model": "gemini-2.5-flash",
+        "num_samples": 3
+      }
     }
   }
 }

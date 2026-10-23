@@ -18,7 +18,7 @@ import logging
 import os
 from functools import lru_cache
 
-from .config import get_settings
+from .config import get_settings, is_managed_runtime
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ def get_secret(secret_id: str, *, env_override: str | None = None, version: str 
     Raises:
       SecretNotFoundError: If the secret is not available.
     """
-    if env_override and os.getenv(env_override):
+    if env_override and os.getenv(env_override) and not is_managed_runtime():
         logger.info("secret_resolved", extra={"secret_id": secret_id, "source": "env"})
         return os.environ[env_override]
 

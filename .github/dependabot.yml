@@ -1,0 +1,13 @@
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      google:
+        patterns: ["google-*", "opentelemetry-*"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

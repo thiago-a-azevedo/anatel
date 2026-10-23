@@ -23,7 +23,7 @@ from google.adk.agents.readonly_context import ReadonlyContext
 from google.adk.tools.mcp_tool import McpToolset
 from google.adk.tools.mcp_tool.mcp_session_manager import StreamableHTTPConnectionParams
 
-from ..config import get_settings
+from ..config import get_settings, is_managed_runtime
 from ..secrets import get_secret
 
 logger = logging.getLogger(__name__)
@@ -55,8 +55,8 @@ class _IdTokenProvider:
         self._lock = threading.Lock()
 
     def _fetch(self) -> str:
-        # 1) Explicit override (CI / local debugging only).
-        if os.getenv("MCP_ID_TOKEN"):
+        # 1) Explicit override - developer machines / CI only, ignored in production.
+        if os.getenv("MCP_ID_TOKEN") and not is_managed_runtime():
             return os.environ["MCP_ID_TOKEN"]
         # 2) Workload identity: Agent Engine / Cloud Run / GCE metadata server or a
         #    service-account key referenced by GOOGLE_APPLICATION_CREDENTIALS.
@@ -67,8 +67,13 @@ class _IdTokenProvider:
             request = google.auth.transport.requests.Request()
             return google.oauth2.id_token.fetch_id_token(request, self._audience)
         except Exception as exc:  # noqa: BLE001
+            if is_managed_runtime():
+                raise RuntimeError(
+                    "Workload identity could not mint an ID token for the Anatel MCP "
+                    f"server ({exc}). Check the Agent Engine service account."
+                ) from exc
             logger.info("id_token_workload_identity_unavailable", extra={"error": str(exc)})
-        # 3) Local developer fallback: end-user gcloud credentials.
+        # 3) Local developer fallback: end-user gcloud credentials (never in production).
         gcloud = shutil.which("gcloud")
         if gcloud:
             out = subprocess.run(

@@ -22,6 +22,7 @@ import re
 from functools import lru_cache
 
 from google.adk.agents.callback_context import CallbackContext
+from google.adk.agents.invocation_context import InvocationContext
 from google.adk.models.llm_request import LlmRequest
 from google.adk.models.llm_response import LlmResponse
 from google.adk.plugins.base_plugin import BasePlugin
@@ -51,16 +52,6 @@ _BLOCK_MESSAGE = (
 )
 
 
-def _last_user_text(llm_request: LlmRequest) -> str:
-    for content in reversed(llm_request.contents or []):
-        if content.role == "user":
-            texts = [p.text for p in (content.parts or []) if p.text]
-            if texts:
-                return "\n".join(texts)
-            return ""  # last user turn is a function response, nothing to screen
-    return ""
-
-
 def detect_prompt_injection(text: str) -> bool:
     """Returns True if ``text`` matches a known prompt-injection pattern."""
     return any(p.search(text) for p in _INJECTION_PATTERNS)
@@ -77,7 +68,11 @@ def _model_armor_client():  # pragma: no cover - requires GCP
 
 
 def _model_armor_blocks(text: str, *, is_prompt: bool) -> bool:  # pragma: no cover - GCP
-    """Screens text with Model Armor. Fails open (logged) if the API is unavailable."""
+    """Screens text with Model Armor.
+
+    On API failure the behavior follows ``GUARDRAILS_FAIL_MODE`` (``open`` logs and
+    allows; ``closed`` blocks). Local deterministic rules always run regardless.
+    """
     template = get_settings().model_armor_template
     if not template or not text:
         return False
@@ -100,8 +95,12 @@ def _model_armor_blocks(text: str, *, is_prompt: bool) -> bool:  # pragma: no co
         )
         return matched
     except Exception as exc:  # noqa: BLE001
-        logger.warning("model_armor_unavailable", extra={"error": str(exc), "is_prompt": is_prompt})
-        return False
+        fail_closed = get_settings().guardrails_fail_mode == "closed"
+        logger.warning(
+            "model_armor_unavailable",
+            extra={"error": str(exc), "is_prompt": is_prompt, "fail_closed": fail_closed},
+        )
+        return fail_closed
 
 
 def _blocked_response() -> LlmResponse:
@@ -109,37 +108,44 @@ def _blocked_response() -> LlmResponse:
 
 
 class GuardrailsPlugin(BasePlugin):
-    """Screens user input before the model and model output after it."""
+    """Screens the human message once per invocation and every model answer.
+
+    Input screening runs in ``on_user_message_callback`` so ONLY text typed by the
+    human is evaluated - never tool results, reports or approval payloads that later
+    appear in the model history (which caused false positives). If the message is
+    blocked, every model call of that invocation is short-circuited with a refusal.
+    """
 
     def __init__(self) -> None:
         super().__init__(name="guardrails")
-        self._screened_invocations: set[str] = set()
+        self._blocked_invocations: set[str] = set()
+
+    async def on_user_message_callback(
+        self, *, invocation_context: InvocationContext, user_message: types.Content
+    ) -> types.Content | None:
+        text = "\n".join(p.text for p in (user_message.parts or []) if p.text)
+        if not text:
+            return None  # e.g. HITL confirmation (function_response) - nothing to screen
+        invocation_id = invocation_context.invocation_id
+        layer = None
+        if detect_prompt_injection(text):
+            layer = "local_rules"
+        elif await asyncio.to_thread(_model_armor_blocks, text, is_prompt=True):
+            layer = "model_armor"
+        if layer:
+            self._blocked_invocations.add(invocation_id)
+            if len(self._blocked_invocations) > 10_000:
+                self._blocked_invocations.clear()
+            logger.warning(
+                "guardrail_blocked",
+                extra={"layer": layer, "reason": "user_prompt", "invocation_id": invocation_id},
+            )
+        return None
 
     async def before_model_callback(
         self, *, callback_context: CallbackContext, llm_request: LlmRequest
     ) -> LlmResponse | None:
-        # Screen each user message once per invocation (sub-agents reuse the history).
-        invocation_id = callback_context.invocation_id
-        if invocation_id in self._screened_invocations:
-            return None
-        text = _last_user_text(llm_request)
-        if not text:
-            return None
-        self._screened_invocations.add(invocation_id)
-        if len(self._screened_invocations) > 10_000:
-            self._screened_invocations.clear()
-
-        if detect_prompt_injection(text):
-            logger.warning(
-                "guardrail_blocked",
-                extra={"layer": "local_rules", "reason": "prompt_injection", "invocation_id": invocation_id},
-            )
-            return _blocked_response()
-        if await asyncio.to_thread(_model_armor_blocks, text, is_prompt=True):
-            logger.warning(
-                "guardrail_blocked",
-                extra={"layer": "model_armor", "reason": "user_prompt", "invocation_id": invocation_id},
-            )
+        if callback_context.invocation_id in self._blocked_invocations:
             return _blocked_response()
         return None
 
