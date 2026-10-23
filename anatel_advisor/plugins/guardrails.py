@@ -5,7 +5,7 @@ Layered defense:
 1. **Google Cloud Model Armor** (when ``MODEL_ARMOR_TEMPLATE`` is set): the user prompt
    is screened with ``SanitizeUserPrompt`` (prompt injection / jailbreak, malicious
    URLs, RAI categories, sensitive data) and the model answer with
-   ``SanitizeModelResponse``. The template is provisioned by ``infra/setup.sh``.
+   ``SanitizeModelResponse``. The template is provisioned by Terraform (``terraform/``).
 2. **Local deterministic rules** (always on, zero latency): prompt-injection phrases
    and a domain allow-list so the assistant stays on Brazilian telecom topics.
 3. **Critic self-evaluation** (in the report pipeline, see ``sub_agents.py``): an

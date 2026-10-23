@@ -1,7 +1,7 @@
 # Cloud Build CD pipeline: lint -> unit -> golden eval -> deploy -> post-deploy e2e.
 #
-# Runs as the least-privilege deployer SA created by infra/setup_cicd.sh (not the
-# default Cloud Build SA). Infrastructure is applied separately by infra/setup.sh.
+# Runs as the least-privilege deployer SA created by Terraform (not the
+# default Cloud Build SA). Infrastructure is applied separately with Terraform (terraform/).
 #
 # Manual run:
 #   gcloud builds submit --config cloudbuild.yaml --project nprod-demo \

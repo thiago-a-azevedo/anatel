@@ -5,7 +5,7 @@ Idempotent and CI-safe:
 * The target instance is discovered by ``display_name`` (no local state file), so
   every CI run updates the same Agent Engine instead of creating a new one.
 * Non-secret environment configuration (resource names written by
-  ``infra/setup.sh``) is versioned in ``deployment/environments/<project>.env``.
+  Terraform (``terraform/``)) is versioned in ``deployment/environments/<project>.env``.
   Secrets never live there: the MCP endpoint stays in Secret Manager.
 
 Usage:

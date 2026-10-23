@@ -3,7 +3,7 @@
 The MCP server (``mcp-anatel``) is a private Cloud Run service: every request must
 carry a Google-signed OIDC ID token whose audience is the service URL, and the caller
 must hold ``roles/run.invoker`` (granted to the Agent Engine identity by
-``infra/setup.sh``).
+Terraform (``terraform/``)).
 
 The service URL is **not** hardcoded: it is read from Secret Manager
 (``anatel-mcp-url``) through :func:`anatel_advisor.secrets.get_secret`.

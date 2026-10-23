@@ -22,8 +22,9 @@
 8. [Evaluation](#8-evaluation)
 9. [Observability](#9-observability)
 10. [CI/CD](#10-cicd)
-11. [Configuration](#11-configuration)
-12. [Limitations & roadmap](#12-limitations--roadmap)
+11. [Infrastructure as Code](#11-infrastructure-as-code)
+12. [Configuration](#12-configuration)
+13. [Limitations & roadmap](#13-limitations--roadmap)
 
 ---
 
@@ -195,7 +196,7 @@ sequenceDiagram
 │   └── observability/        # JSON logging + OpenTelemetry
 ├── tests/unit/               # offline tests (graph, schemas, tools, plugins, PII, memory)
 ├── tests/eval/               # golden dataset + ADK AgentEvaluator
-├── infra/setup.sh            # IaC with gcloud (idempotent)
+├── terraform/                # IaC: all cloud resources, remote state, per-env tfvars
 ├── deployment/deploy.py      # source-based Agent Engine deploy / test / delete
 ├── docs/knowledge/           # methodology KB indexed in Vertex AI Search
 ├── .github/                  # CI (WIF), Dependabot
@@ -227,7 +228,7 @@ sequenceDiagram
 | | Distributed tracing | OpenTelemetry → Cloud Trace (`AdkApp(enable_tracing=True)`); every log line carries `logging.googleapis.com/trace` |
 | | PII redaction | [`pii.py`](anatel_advisor/pii.py): **Cloud DLP** (CPF, CNPJ, email, phone, card, names) with a regex fallback, applied to all logs and to memory before storage |
 | **Infrastructure & CI/CD** | Evaluation suite | [`tests/eval`](tests/eval): golden dataset scored on tool trajectory and LLM-judge semantic match; [`tests/unit`](tests/unit) offline suite |
-| | Infrastructure as Code | [`infra/setup.sh`](infra/setup.sh): idempotent gcloud provisioning; [`ci.yaml`](.github/workflows/ci.yaml) / [`cloudbuild.yaml`](cloudbuild.yaml) pipelines |
+| | Infrastructure as Code | [`terraform/`](terraform): declarative Terraform with remote GCS state for all resources (APIs, identities, IAM, Secret Manager, buckets, Model Armor, Vertex AI Search, WIF, log metrics, alerts, dashboard, budget); `make verify-infra` drift check; [`ci.yaml`](.github/workflows/ci.yaml) / [`cloudbuild.yaml`](cloudbuild.yaml) pipelines |
 | | Secret management | [`secrets.py`](anatel_advisor/secrets.py): Secret Manager; workload identity only; dev overrides disabled in production; no keys in the repo |
 
 ---
@@ -249,7 +250,7 @@ See [SECURITY.md](SECURITY.md) for the full control matrix.
 | `roles/discoveryengine.viewer` | project | Query the methodology KB |
 | `roles/cloudtrace.agent`, `roles/logging.logWriter`, `roles/monitoring.metricWriter` | project | Telemetry |
 
-\* `infra/setup.sh` binds at resource level and falls back to project level only when the operator lacks `setIamPolicy` on that resource. It prints when it does this.
+\* Controlled by the Terraform variable `iam_scope`: `resource` (default, least privilege) binds on the exact resource; `project` is an explicit fallback for operators without `setIamPolicy` on those resources (used in `nprod-demo`, see its tfvars).
 
 **Defense in depth:**
 - **Identity:** private MCP behind OIDC ID tokens; no service-account keys anywhere; CI uses Workload Identity Federation.
@@ -272,11 +273,14 @@ gcloud auth application-default login
 make install
 ```
 
-### 1. Provision infrastructure (gcloud IaC, idempotent)
+### 1. Provision infrastructure (Terraform)
 ```bash
-make infra PROJECT_ID=<project> REGION=us-central1
+make tf-bootstrap PROJECT_ID=<project>   # once: versioned GCS bucket for remote state
+make tf-init      PROJECT_ID=<project>
+make infra-plan   PROJECT_ID=<project>   # review
+make infra        PROJECT_ID=<project>   # apply
 ```
-This creates the service account and IAM bindings, the `anatel-mcp-url` secret, the buckets, the Model Armor template and the Vertex AI Search data store, then writes `deployment/environments/<project>.env`.
+Create `terraform/environments/<project>.tfvars` and `<project>.backend.hcl` first (copy the `nprod-demo` ones). Terraform also writes `deployment/environments/<project>.env`, which the deploy script consumes.
 
 ### 2. Run locally
 ```bash
@@ -293,7 +297,7 @@ make deploy-test              # smoke test the remote agent
 
 ### 4. Clean up
 ```bash
-make destroy                  # deletes the Agent Engine instance and the infra (the MCP service is kept)
+make destroy                  # deletes the Agent Engine instance, then `terraform destroy` (the MCP service is kept)
 ```
 
 > **Cost note:** the deployment uses `min_instances=1` to avoid cold starts during demos. Set `AGENT_MIN_INSTANCES=0` for idle environments.
@@ -355,21 +359,43 @@ flowchart LR
 | **Cloud Build** | [`cloudbuild.yaml`](cloudbuild.yaml) | Dedicated `anatel-advisor-deployer` SA (not the default Cloud Build SA) | lint → unit → eval → deploy → e2e (results archived to GCS) |
 
 Design choices:
-- **Separation of duties:** `infra/setup.sh` (resources and IAM) is applied by a platform admin. The pipeline identity can only evaluate, deploy and smoke-test; it cannot change IAM or create infrastructure.
+- **Separation of duties:** Terraform (resources and IAM) is applied by a platform admin. The pipeline identity can only evaluate, deploy and smoke-test; it cannot change IAM or create infrastructure.
 - **Idempotent deploys:** the Agent Engine instance is discovered by `display_name`, so every run updates the same instance. No local state file.
 - **GitOps-friendly configuration:** non-secret resource names live in `deployment/environments/<project>.env`. Secrets stay in Secret Manager.
 - **Quality gates:** the golden-dataset eval blocks deployment; the post-deploy E2E runs every user story against the live endpoint.
 
-Bootstrap:
-```bash
-make infra PROJECT_ID=<project>          # resources + runtime SA (admin)
-make cicd  PROJECT_ID=<project>          # deployer SA + WIF pool/provider; prints the GitHub variables to set
-```
-Then, in GitHub, create the `production` environment with required reviewers. For Cloud Build, connect the repository and create the trigger shown at the top of `cloudbuild.yaml`.
+Bootstrap: `make infra` creates the deployer SA and, with `enable_github_wif = true`, the WIF pool/provider. Then set the GitHub variables from the Terraform outputs (`github_wif_provider`, `deployer_service_account`, `mcp_audience`), create the `production` environment with required reviewers, and, for Cloud Build, connect the repository and create the trigger shown at the top of `cloudbuild.yaml`.
 
 ---
 
-## 11. Configuration
+## 11. Infrastructure as Code
+
+Everything the solution needs is declared in [`terraform/`](terraform). State is stored remotely in a versioned GCS bucket (`<project>-tfstate`), and each environment is a `tfvars` file plus a backend file.
+
+| File | Resources |
+|---|---|
+| [`main.tf`](terraform/main.tf) | Required APIs; data sources for the project and the existing MCP Cloud Run service |
+| [`iam.tf`](terraform/iam.tf) | Runtime and deployer service accounts, least-privilege project roles, resource-scoped bindings (or the explicit project fallback) |
+| [`data_plane.tf`](terraform/data_plane.tf) | Secret (MCP URL derived from the Cloud Run URI), buckets (versioning, public-access prevention, lifecycle and retention), Model Armor template, Vertex AI Search data store, knowledge-base objects plus a re-import whenever their content hash changes |
+| [`cicd.tf`](terraform/cicd.tf) | Workload Identity Federation pool and provider restricted to this repository, deployer impersonation, Cloud Build source access |
+| [`observability.tf`](terraform/observability.tf) | Log-based metrics (guardrail blocks, tool errors, memory failures, tool latency distribution), 4 alert policies, email channel, Cloud Monitoring dashboard |
+| [`budget.tf`](terraform/budget.tf) | Monthly budget with alerts at 50 / 90 / 100 % |
+| [`outputs.tf`](terraform/outputs.tf) | Outputs plus the generated `deployment/environments/<project>.env` |
+| [`imports.tf`](terraform/imports.tf) | One-time adoption of resources created before the Terraform migration |
+
+| Operation | Command |
+|---|---|
+| Plan / apply | `make infra-plan` / `make infra` |
+| **Drift detection** | `make verify-infra` (`terraform plan -detailed-exitcode`; exit code 2 means drift) |
+| Full teardown | `make destroy` (Agent Engine + `terraform destroy`) |
+
+**Out of scope (by design):**
+- The Anatel MCP Cloud Run service and its Gemini Enterprise connector are independently owned; they are referenced through a data source.
+- The Agent Engine *application* is deployed by the CD pipeline (`deployment/deploy.py`), not by Terraform. This keeps infrastructure changes (admin) separate from release cadence (CI/CD).
+
+---
+
+## 12. Configuration
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -386,11 +412,12 @@ Then, in GitHub, create the `production` environment with required reviewers. Fo
 
 ---
 
-## 12. Limitations & roadmap
+## 13. Limitations & roadmap
 
 **Limitations**
 - When Anatel's open-data files are unreachable, the MCP server falls back to a seeded snapshot (`metadados_fonte.origem_leitura = "fallback_seed_ram"`). The agent records the data origin in every `tool_outcome` log.
 - The full report pipeline takes about 1–3 minutes (four agents, one of them on Pro). Quick lookups and glossary questions are much faster.
+- The `nprod-demo` environment uses `iam_scope = "project"` and `enable_github_wif = false` because the operator account cannot set resource-level IAM or create WIF pools there.
 - `SequentialAgent` is used because ADK `Workflow` cannot yet be a sub-agent of an `LlmAgent`.
 
 **Roadmap**

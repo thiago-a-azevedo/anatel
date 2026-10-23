@@ -57,3 +57,10 @@ Thumbs.db
 
 # E2E run output
 e2e_results.json
+
+# Terraform (keep .terraform.lock.hcl committed)
+.terraform/
+*.tfplan
+*.tfstate
+*.tfstate.*
+crash.log

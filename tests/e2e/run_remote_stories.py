@@ -180,5 +180,8 @@ async def main():
             continue
         for t in r["turns"]:
             print(f"{'PASS' if t['pass'] else 'FAIL'} | {r['story']:<28} | {t['prompt'][:40]:<40} | {t['latency_s']:>6}s | {t['why'][:200]}")
+    failed = [r for r in clean if "turns" not in r or not all(t["pass"] for t in r["turns"])]
+    if failed:
+        sys.exit(f"{len(failed)} stor(ies) failed")  # non-zero exit fails the CD pipeline
 
 asyncio.run(main())

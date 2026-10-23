@@ -2,9 +2,8 @@ PROJECT_ID ?= nprod-demo
 REGION     ?= us-central1
 PY         ?= .venv/bin/python
 GCLOUD     ?= gcloud
-GITHUB_REPO ?= thiago-a-azevedo/anatel
 
-.PHONY: install lint test eval e2e playground run infra cicd deploy deploy-test destroy
+.PHONY: install lint test eval e2e playground run tf-bootstrap tf-init infra-plan infra verify-infra infra-destroy deploy deploy-test destroy
 
 install:            ## Create venv and install deps
 	uv venv .venv --python 3.12 && uv pip install --python $(PY) -e ".[dev]"
@@ -27,11 +26,27 @@ playground:         ## ADK dev UI with persistent local sessions + memory
 run:                ## CLI chat
 	.venv/bin/adk run anatel_advisor
 
-infra:              ## Provision GCP resources with gcloud (idempotent)
-	PROJECT_ID=$(PROJECT_ID) REGION=$(REGION) GCLOUD=$(GCLOUD) bash infra/setup.sh
+TF       ?= terraform
+TF_DIR   := terraform
+TF_VARS  := -var-file=environments/$(PROJECT_ID).tfvars
 
-cicd:               ## Provision Workload Identity Federation + deployer SA for CI/CD
-	PROJECT_ID=$(PROJECT_ID) GCLOUD=$(GCLOUD) GITHUB_REPO=$(GITHUB_REPO) bash infra/setup_cicd.sh
+tf-bootstrap:       ## Create the versioned remote-state bucket (once per project)
+	PROJECT_ID=$(PROJECT_ID) REGION=$(REGION) GCLOUD=$(GCLOUD) bash $(TF_DIR)/bootstrap/create_state_bucket.sh
+
+tf-init:            ## terraform init with the environment backend
+	cd $(TF_DIR) && $(TF) init -input=false -backend-config=environments/$(PROJECT_ID).backend.hcl
+
+infra-plan:         ## Show infrastructure changes (no side effects)
+	cd $(TF_DIR) && $(TF) plan -input=false $(TF_VARS)
+
+infra:              ## Apply infrastructure (Terraform)
+	cd $(TF_DIR) && $(TF) apply -input=false $(TF_VARS)
+
+verify-infra:       ## Drift check: fails if real infra differs from code
+	cd $(TF_DIR) && $(TF) plan -input=false -detailed-exitcode -lock=false $(TF_VARS)
+
+infra-destroy:      ## Destroy ALL infrastructure managed by Terraform
+	cd $(TF_DIR) && $(TF) destroy -input=false $(TF_VARS)
 
 deploy:             ## Deploy/update on Vertex AI Agent Engine (idempotent)
 	GOOGLE_CLOUD_PROJECT=$(PROJECT_ID) $(PY) deployment/deploy.py
@@ -39,5 +54,6 @@ deploy:             ## Deploy/update on Vertex AI Agent Engine (idempotent)
 deploy-test:        ## Smoke-test the deployed agent
 	GOOGLE_CLOUD_PROJECT=$(PROJECT_ID) $(PY) deployment/deploy.py --test "Compare Brisanet, Claro e Vivo em banda larga no CE"
 
-destroy:            ## Delete Agent Engine + infra
-	GOOGLE_CLOUD_PROJECT=$(PROJECT_ID) $(PY) deployment/deploy.py --delete; PROJECT_ID=$(PROJECT_ID) bash infra/teardown.sh
+destroy:            ## Delete the Agent Engine instance, then all infrastructure
+	GOOGLE_CLOUD_PROJECT=$(PROJECT_ID) $(PY) deployment/deploy.py --delete
+	$(MAKE) infra-destroy PROJECT_ID=$(PROJECT_ID)
