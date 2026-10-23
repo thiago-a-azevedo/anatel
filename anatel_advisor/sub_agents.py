@@ -42,6 +42,11 @@ from .tools.report_tools import (
 )
 
 _DETERMINISTIC = types.GenerateContentConfig(temperature=0.1)
+
+# Only the coordinator routes. Specialists answer and hand control back, which makes
+# agent-to-agent transfer loops structurally impossible (a failure mode observed when
+# a dependency was unavailable: specialists bounced requests until the LLM-call limit).
+_NO_TRANSFER = {"disallow_transfer_to_parent": True, "disallow_transfer_to_peers": True}
 _ANALYTICAL = types.GenerateContentConfig(temperature=0.3)
 
 
@@ -59,6 +64,7 @@ def build_knowledge_agent() -> LlmAgent:
             )
         )
     return LlmAgent(
+        **_NO_TRANSFER,
         name="knowledge_agent",
         description="Explains Anatel regulatory concepts, acronyms (RQUAL, IQS, IDA, ISG, SMP, SCM) and methodology.",
         model=build_model(settings.models.router),
@@ -73,6 +79,7 @@ def build_quick_data_agent() -> LlmAgent:
     """Answers single-pillar factual lookups quickly with Flash."""
     settings = get_settings()
     return LlmAgent(
+        **_NO_TRANSFER,
         name="quick_data_agent",
         description="Fast factual lookups of one Anatel indicator for one operator/place (seal, IQS, complaints, satisfaction, network).",
         model=build_model(settings.models.collector),
@@ -88,6 +95,7 @@ def build_report_pipeline() -> SequentialAgent:
     settings = get_settings()
 
     collector = LlmAgent(
+        **_NO_TRANSFER,
         name="data_collector",
         description="Retrieves every Anatel dataset needed for a comparison or report.",
         model=build_model(settings.models.collector),
@@ -98,6 +106,7 @@ def build_report_pipeline() -> SequentialAgent:
         generate_content_config=_DETERMINISTIC,
     )
     analyst = LlmAgent(
+        **_NO_TRANSFER,
         name="telecom_analyst",
         description="Senior analyst that turns collected Anatel data into grounded insights.",
         model=build_model(settings.models.analyst),
@@ -109,6 +118,7 @@ def build_report_pipeline() -> SequentialAgent:
         include_contents="default",
     )
     critic = LlmAgent(
+        **_NO_TRANSFER,
         name="quality_critic",
         description="LLM-as-judge that verifies every figure in the draft against tool outputs.",
         model=build_model(settings.models.critic),
@@ -122,6 +132,7 @@ def build_report_pipeline() -> SequentialAgent:
         generate_content_config=_DETERMINISTIC,
     )
     publisher = LlmAgent(
+        **_NO_TRANSFER,
         name="report_publisher",
         description="Applies critic fixes and presents the final grounded report.",
         model=build_model(settings.models.critic),

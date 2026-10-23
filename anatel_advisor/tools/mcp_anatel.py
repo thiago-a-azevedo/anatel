@@ -67,6 +67,13 @@ class _IdTokenProvider:
             request = google.auth.transport.requests.Request()
             return google.oauth2.id_token.fetch_id_token(request, self._audience)
         except Exception as exc:  # noqa: BLE001
+            logger.info("id_token_metadata_unavailable", extra={"error": str(exc)})
+        # 2b) IAM Credentials generateIdToken for the ADC service account itself.
+        #     Needed where the metadata identity endpoint is unavailable (e.g. Cloud
+        #     Build). Requires roles/iam.serviceAccountOpenIdTokenCreator on itself.
+        try:
+            return self._fetch_via_iam_credentials()
+        except Exception as exc:  # noqa: BLE001
             if is_managed_runtime():
                 raise RuntimeError(
                     "Workload identity could not mint an ID token for the Anatel MCP "
@@ -89,6 +96,27 @@ class _IdTokenProvider:
             "'gcloud auth login' locally or deploy with a service account that has "
             "roles/run.invoker on the mcp-anatel Cloud Run service."
         )
+
+    def _fetch_via_iam_credentials(self) -> str:
+        import google.auth
+        import google.auth.transport.requests
+        from google.auth import impersonated_credentials
+
+        scopes = ["https://www.googleapis.com/auth/cloud-platform"]
+        request = google.auth.transport.requests.Request()
+        source, _ = google.auth.default(scopes=scopes)
+        source.refresh(request)  # populates service_account_email on metadata creds
+        email = getattr(source, "service_account_email", None)
+        if not email or "@" not in email or email == "default":
+            raise RuntimeError("ADC is not a service account; cannot use generateIdToken")
+        target = impersonated_credentials.Credentials(
+            source_credentials=source, target_principal=email, target_scopes=scopes
+        )
+        id_creds = impersonated_credentials.IDTokenCredentials(
+            target, target_audience=self._audience, include_email=True
+        )
+        id_creds.refresh(request)
+        return id_creds.token
 
     def get(self) -> str:
         with self._lock:

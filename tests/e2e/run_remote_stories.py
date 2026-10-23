@@ -7,19 +7,22 @@ assertions. Writes JSON results for the test report.
 """
 import asyncio
 import json
-import os
 import re
 import sys
 import time
 from pathlib import Path
 
-import vertexai
-
 ROOT = Path(__file__).resolve().parents[2]
-NAME = json.load(open(ROOT / "deployment" / ".agent_engine.json"))["name"]
+sys.path.insert(0, str(ROOT / "deployment"))
+from deploy import find_engine, get_client, load_environment  # noqa: E402
+
+load_environment()
 OUT = sys.argv[1] if len(sys.argv) > 1 else str(ROOT / "e2e_results.json")
 RUN = str(int(time.time()))
-client = vertexai.Client(project=os.environ["GOOGLE_CLOUD_PROJECT"], location=os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1"))
+client = get_client()
+NAME = find_engine(client)
+if not NAME:
+    sys.exit("No Agent Engine deployment found.")
 remote = client.agent_engines.get(name=NAME)
 
 

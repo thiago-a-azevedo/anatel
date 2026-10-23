@@ -2,7 +2,6 @@
 
 from types import SimpleNamespace
 
-import pytest
 from google.adk.agents import LlmAgent, SequentialAgent
 from google.adk.events.event import Event
 from google.adk.sessions.session import Session
@@ -101,15 +100,27 @@ async def test_memory_is_redacted_before_storage():
 
 
 def test_dev_overrides_ignored_in_managed_runtime(monkeypatch):
+    """On Agent Engine an env override must never replace the Secret Manager value."""
+    import sys
+    import types as pytypes
+
     from anatel_advisor import secrets
 
+    class _FakeSM:
+        def access_secret_version(self, request):
+            payload = SimpleNamespace(data=b"https://mcp-from-secret-manager.run.app")
+            return SimpleNamespace(payload=payload)
+
+    fake_module = pytypes.SimpleNamespace(SecretManagerServiceClient=lambda: _FakeSM())
+    monkeypatch.setitem(sys.modules, "google.cloud.secretmanager", fake_module)
     monkeypatch.setenv("GOOGLE_CLOUD_AGENT_ENGINE_ID", "123")
     monkeypatch.setenv("ANATEL_MCP_URL", "https://attacker.example")
     secrets.get_secret.cache_clear()
-    with pytest.raises(secrets.SecretNotFoundError):
-        # Falls through to Secret Manager (unavailable in tests) instead of trusting env.
-        secrets.get_secret("anatel-mcp-url", env_override="ANATEL_MCP_URL")
-    secrets.get_secret.cache_clear()
+    try:
+        value = secrets.get_secret("anatel-mcp-url", env_override="ANATEL_MCP_URL")
+    finally:
+        secrets.get_secret.cache_clear()
+    assert value == "https://mcp-from-secret-manager.run.app"
 
 
 def test_export_sanitizes_user_id(monkeypatch):
@@ -145,3 +156,17 @@ def test_observability_plugin_runs_first():
     """Regression: ADK stops at the first plugin returning a value; observability
     must precede the guard plugins or tool outcomes go unlogged."""
     assert isinstance(app.plugins[0], ObservabilityPlugin)
+
+
+def test_only_coordinator_can_transfer():
+    """Regression: specialists bounced requests to each other until the 500 LLM-call
+    limit when the MCP was unavailable. Only the coordinator may route."""
+
+    def walk(a):
+        yield a
+        for s in a.sub_agents:
+            yield from walk(s)
+
+    for agent in walk(root_agent):
+        if isinstance(agent, LlmAgent) and agent is not root_agent:
+            assert agent.disallow_transfer_to_parent and agent.disallow_transfer_to_peers, agent.name
