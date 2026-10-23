@@ -58,7 +58,7 @@ adk-deploy:         ## Deploy via ADK CLI (`adk deploy agent_engine`)
 	.venv/bin/adk deploy agent_engine --project=$(PROJECT_ID) --region=$(REGION) --staging_bucket=gs://$(PROJECT_ID)-anatel-advisor-staging --display_name=anatel-telecom-advisor anatel_advisor
 
 deploy-test:        ## Smoke-test the deployed agent
-	GOOGLE_CLOUD_PROJECT=$(PROJECT_ID) $(PY) deployment/deploy.py --test "Compare Brisanet, Claro e Vivo em banda larga no CE"
+	GOOGLE_CLOUD_PROJECT=$(PROJECT_ID) $(PY) deployment/deploy.py --test "Compare as operadoras de banda larga no CE"
 
 destroy:            ## Delete the Agent Engine instance, then all infrastructure
 	GOOGLE_CLOUD_PROJECT=$(PROJECT_ID) $(PY) deployment/deploy.py --delete

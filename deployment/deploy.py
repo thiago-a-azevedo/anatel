@@ -10,7 +10,7 @@ Idempotent and CI-safe:
 
 Usage:
     python deployment/deploy.py                       # create or update
-    python deployment/deploy.py --test "Compare Vivo e Claro no SMP em SP"
+    python deployment/deploy.py --test "Quais as principais reclamações por operadora no celular em SP?"
     python deployment/deploy.py --print-name          # resolved engine resource name
     python deployment/deploy.py --delete
 """
