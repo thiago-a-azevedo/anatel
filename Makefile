@@ -28,7 +28,7 @@ run:                ## CLI chat
 
 TF       ?= terraform
 TF_DIR   := terraform
-TF_VARS  := -var-file=environments/$(PROJECT_ID).tfvars
+TF_VARS  := -var-file=environments/$(PROJECT_ID).tfvars $(if $(wildcard $(TF_DIR)/environments/$(PROJECT_ID).private.tfvars),-var-file=environments/$(PROJECT_ID).private.tfvars)
 
 tf-bootstrap:       ## Create the versioned remote-state bucket (once per project)
 	PROJECT_ID=$(PROJECT_ID) REGION=$(REGION) GCLOUD=$(GCLOUD) bash $(TF_DIR)/bootstrap/create_state_bucket.sh

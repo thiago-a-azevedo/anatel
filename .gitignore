@@ -64,3 +64,4 @@ e2e_results.json
 *.tfstate
 *.tfstate.*
 crash.log
+terraform/environments/*.private.tfvars

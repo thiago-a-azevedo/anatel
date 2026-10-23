@@ -1,0 +1,4 @@
+# Copy to environments/<project>.private.tfvars (git-ignored) and fill in.
+# Both are optional: empty values disable the alert email channel / budget.
+alert_email        = "you@example.com"
+billing_account_id = "XXXXXX-XXXXXX-XXXXXX"

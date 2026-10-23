@@ -12,6 +12,9 @@ enable_github_wif = false
 
 github_repository = "thiago-a-azevedo/anatel"
 
+# alert_email and billing_account_id live in the git-ignored
+# environments/nprod-demo.private.tfvars (see private.tfvars.example).
+
 monthly_budget_usd = 200
 
 force_destroy_buckets  = true

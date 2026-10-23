@@ -280,7 +280,7 @@ make tf-init      PROJECT_ID=<project>
 make infra-plan   PROJECT_ID=<project>   # review
 make infra        PROJECT_ID=<project>   # apply
 ```
-Create `terraform/environments/<project>.tfvars` and `<project>.backend.hcl` first (copy the `nprod-demo` ones). Terraform also writes `deployment/environments/<project>.env`, which the deploy script consumes.
+Create `terraform/environments/<project>.tfvars` and `<project>.backend.hcl` first (copy the `nprod-demo` ones). Operator-specific identifiers (alert email, billing account) go in the git-ignored `<project>.private.tfvars` (see `private.tfvars.example`). Terraform also writes `deployment/environments/<project>.env`, which the deploy script consumes.
 
 ### 2. Run locally
 ```bash
