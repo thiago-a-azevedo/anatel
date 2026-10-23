@@ -263,3 +263,32 @@ async def test_guardrail_blocks_system_prompt_leak_in_model_response():
         callback_context=SimpleNamespace(invocation_id="inv-leak"), llm_response=leaked
     )
     assert out is not None and "Não posso ajudar" in out.content.parts[0].text
+
+
+async def test_mcp_anatel_server_contract_matches_advisor_schemas():
+    import sys
+    from pathlib import Path
+
+    from anatel_advisor.schemas import TOOL_JSON_SCHEMAS, McpToolOutput
+    from anatel_advisor.tools.mcp_anatel import ALL_ANATEL_TOOLS
+
+    mcp_root = str(Path(__file__).resolve().parents[2] / "mcp_anatel")
+    if mcp_root not in sys.path:
+        sys.path.insert(0, mcp_root)
+
+    from src.api.mcp_server import mcp as mcp_server
+    from src.application.anatel_service import anatel_service
+
+    server_tools = {t.name for t in mcp_server._tool_manager.list_tools()}
+    assert server_tools == set(ALL_ANATEL_TOOLS)
+    for name in server_tools:
+        assert name in TOOL_JSON_SCHEMAS
+
+    sample = await anatel_service.consultar_rqual_iqs(operadora="VIVO", servico="SCM", uf="SP")
+    parsed = McpToolOutput.model_validate({"isError": False, "structuredContent": sample})
+    assert parsed.isError is False
+    assert parsed.structuredContent is not None
+    assert parsed.structuredContent.registros is not None and len(parsed.structuredContent.registros) >= 1
+    assert parsed.structuredContent.metadados_fonte is not None
+    assert parsed.structuredContent.metadados_fonte.pilar is not None
+

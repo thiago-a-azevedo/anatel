@@ -3,16 +3,26 @@ REGION     ?= us-central1
 PY         ?= .venv/bin/python
 GCLOUD     ?= gcloud
 
-.PHONY: install lint test eval adk-eval e2e playground run tf-bootstrap tf-init infra-plan infra verify-infra infra-destroy deploy adk-deploy deploy-test destroy
+.PHONY: install lint test mcp-test mcp-run mcp-deploy eval adk-eval e2e playground run tf-bootstrap tf-init infra-plan infra verify-infra infra-destroy deploy adk-deploy deploy-test destroy
 
 install:            ## Create venv and install deps
 	uv venv .venv --python 3.12 && uv pip install --python $(PY) -e ".[dev]"
 
-lint:               ## Static checks
-	$(PY) -m ruff check anatel_advisor tests deployment
+lint:               ## Static checks (ADK agents + MCP server)
+	$(PY) -m ruff check anatel_advisor mcp_anatel tests deployment
 
-test:               ## Unit tests (offline)
+test:               ## Unit tests (offline: ADK agents + MCP server)
 	$(PY) -m pytest tests/unit -q
+	PYTHONPATH=mcp_anatel $(PY) -m pytest mcp_anatel/tests -q
+
+mcp-test:           ## Run MCP server unit & StreamableHTTP tests
+	PYTHONPATH=mcp_anatel $(PY) -m pytest mcp_anatel/tests -v
+
+mcp-run:            ## Start local Anatel MCP server on http://localhost:8080/mcp
+	PYTHONPATH=mcp_anatel $(PY) -m uvicorn src.main:app --host 0.0.0.0 --port 8080
+
+mcp-deploy:         ## Deploy/update the Anatel MCP server on Cloud Run
+	PROJECT_ID=$(PROJECT_ID) REGION=$(REGION) GCLOUD=$(GCLOUD) bash mcp_anatel/scripts/deploy_cloud_run.sh
 
 eval:               ## Golden-dataset evaluation (Gemini + live MCP)
 	$(PY) -m pytest tests/eval -m eval -q

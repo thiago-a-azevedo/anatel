@@ -29,11 +29,11 @@ steps:
   - id: lint
     name: python:3.12-slim
     entrypoint: bash
-    args: ["-c", ".venv/bin/python -m ruff check anatel_advisor tests deployment"]
+    args: ["-c", ".venv/bin/python -m ruff check anatel_advisor mcp_anatel tests deployment"]
   - id: unit-tests
     name: python:3.12-slim
     entrypoint: bash
-    args: ["-c", ".venv/bin/python -m pytest tests/unit -q"]
+    args: ["-c", ".venv/bin/python -m pytest tests/unit -q && PYTHONPATH=mcp_anatel .venv/bin/python -m pytest mcp_anatel/tests -q"]
   - id: eval
     name: python:3.12-slim
     entrypoint: bash

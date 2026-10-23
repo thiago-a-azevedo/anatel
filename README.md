@@ -218,7 +218,12 @@ sequenceDiagram
 │   ├── tools/                # MCP toolset (OIDC ID-token auth) + local tools
 │   ├── plugins/              # observability, guardrails, tool guard
 │   └── observability/        # JSON logging + OpenTelemetry
-├── tests/unit/               # 46 offline tests (graph, schemas, tools, plugins, PII, memory, golden evalset)
+├── mcp_anatel/               # Anatel MCP server (FastAPI + MCPServer + Polars, Cloud Run)
+│   ├── Dockerfile            # multi-stage non-root container image
+│   ├── scripts/              # Cloud Run deployment + IAM script (deploy_cloud_run.sh)
+│   ├── src/                  # StreamableHTTP (/mcp), 7 Anatel tools, Polars RAM cache + seed fallback
+│   └── tests/                # 13 unit & StreamableHTTP protocol tests
+├── tests/unit/               # 47 offline ADK + MCP contract tests (60 total with mcp_anatel/tests)
 ├── tests/eval/               # golden dataset + ADK AgentEvaluator
 ├── tests/e2e/                # remote E2E harness (E1-E10 against Agent Runtime)
 ├── terraform/                # IaC: all cloud resources, remote GCS state, per-env tfvars
@@ -236,7 +241,7 @@ sequenceDiagram
 
 | Category | Criterion | Evidence |
 |---|---|---|
-| **Tool & Interface Design** | Tool docstrings | [`tools/report_tools.py`](anatel_advisor/tools/report_tools.py): purpose, every argument and the return value documented; MCP tools carry server-side descriptions |
+| **Tool & Interface Design** | Tool docstrings | [`tools/report_tools.py`](anatel_advisor/tools/report_tools.py) and [`mcp_anatel/src/api/mcp_server.py`](mcp_anatel/src/api/mcp_server.py): purpose, every argument and the return value documented on all 10 tools (3 local + 7 MCP) |
 | | Descriptive naming | `calculate_weighted_operator_ranking`, `export_report_to_gcs`, `list_supported_anatel_filters`, `consultar_reclamacoes_ida` |
 | | Explicit JSON schemas | [`schemas.py`](anatel_advisor/schemas.py): Pydantic args for **every MCP tool** (`MCP_ARG_SCHEMAS`, `extra="forbid"`), typed tool I/O (`McpToolOutput`, `RankingResult`, `ExportReportResult`, `SupportedFiltersResult`), exported `TOOL_JSON_SCHEMAS` (input + output JSON Schemas for all 10 tools), `CriticVerdict` as `output_schema` |
 | | Guided error handling | [`plugins/tool_guard.py`](anatel_advisor/plugins/tool_guard.py): invalid args are short-circuited with a `recovery_hint`; empty results return "broaden filters, never fabricate"; timeout/401/5xx return actionable guidance; local tools return `status="error"` plus a hint |
@@ -298,8 +303,9 @@ gcloud auth application-default login
 make install
 ```
 
-### 1. Provision infrastructure (Terraform)
+### 1. Deploy the Anatel MCP server & provision infrastructure (Terraform)
 ```bash
+make mcp-deploy   PROJECT_ID=<project>   # build & deploy mcp_anatel/ to Cloud Run (mcp-anatel)
 make tf-bootstrap PROJECT_ID=<project>   # once: versioned GCS bucket for remote state
 make tf-init      PROJECT_ID=<project>
 make infra-plan   PROJECT_ID=<project>   # review
@@ -307,10 +313,11 @@ make infra        PROJECT_ID=<project>   # apply
 ```
 Create `terraform/environments/<project>.tfvars` and `<project>.backend.hcl` first (copy the `nprod-demo` ones). Operator-specific identifiers (alert email, billing account) go in the git-ignored `<project>.private.tfvars` (see `private.tfvars.example`). Terraform also writes `deployment/environments/<project>.env`, which the deploy script consumes.
 
-### 2. Run locally (ADK CLI)
+### 2. Run locally (ADK CLI + local MCP server)
 ```bash
 cp .env.example .env          # set your project id
-make test                     # offline unit tests
+make test                     # offline unit tests (ADK agents + MCP server)
+make mcp-run                  # optional: start local MCP server on http://localhost:8080/mcp
 make playground               # adk web --session_service_uri sqlite:///.adk/sessions.db .
 make run                      # adk run anatel_advisor
 ```

@@ -1,0 +1,36 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mcp-anatel"
+version = "0.1.0"
+description = "Servidor MCP para consulta de dados da Anatel: Consumidor e Qualidade (RQUAL, IQS, Indicadores de Rede, Reclamações/IDA e Pesquisa de Satisfação) compatível com Gemini Enterprise Custom MCP Server"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "mcp>=2.0.0",
+    "httpx>=0.28.0",
+    "polars>=1.15.0",
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+]
+
+[project.scripts]
+mcp-anatel = "src.main:run_cli"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
