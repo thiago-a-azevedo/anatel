@@ -3,7 +3,7 @@ REGION     ?= us-central1
 PY         ?= .venv/bin/python
 GCLOUD     ?= gcloud
 
-.PHONY: install lint test eval playground run infra deploy deploy-test destroy
+.PHONY: install lint test eval e2e playground run infra deploy deploy-test destroy
 
 install:            ## Create venv and install deps
 	uv venv .venv --python 3.12 && uv pip install --python $(PY) -e ".[dev]"
@@ -16,6 +16,9 @@ test:               ## Unit tests (offline)
 
 eval:               ## Golden-dataset evaluation (Gemini + live MCP)
 	$(PY) -m pytest tests/eval -m eval -q
+
+e2e:                ## Run every user story against the deployed Agent Engine
+	set -a; . ./.env.deploy; set +a; $(PY) tests/e2e/run_remote_stories.py
 
 playground:         ## ADK dev UI with persistent local sessions + memory
 	.venv/bin/adk web --session_service_uri sqlite:///.adk/sessions.db .

@@ -2,10 +2,11 @@
 
 * :class:`RedactingMemoryService` wraps any ADK memory service and scrubs PII from
   every event *before* it is sent for memory generation (see :mod:`anatel_advisor.pii`).
-* :func:`schedule_memory_generation` is used as the root agent's
-  ``after_agent_callback``: memory extraction/consolidation on Memory Bank is an
-  expensive LLM job, so it is fired as a background ``asyncio`` task and the user
-  receives the answer immediately.
+* :class:`MemoryPlugin` hooks ``after_run_callback``, which fires once at the end of
+  EVERY invocation regardless of which agent answered (coordinator or any
+  specialist reached via ``transfer_to_agent``). Memory extraction/consolidation
+  on Memory Bank is an expensive LLM job, so it is fired as a background
+  ``asyncio`` task and the user receives the answer immediately.
 """
 
 from __future__ import annotations
@@ -13,8 +14,9 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING
 
-from google.adk.agents.callback_context import CallbackContext
+from google.adk.agents.invocation_context import InvocationContext
 from google.adk.memory.base_memory_service import BaseMemoryService, SearchMemoryResponse
+from google.adk.plugins.base_plugin import BasePlugin
 
 from .observability.logging import get_logger
 from .pii import redact
@@ -61,26 +63,32 @@ class RedactingMemoryService(BaseMemoryService):
         return await self._inner.search_memory(app_name=app_name, user_id=user_id, query=query)
 
 
-async def _generate_memories(callback_context: CallbackContext) -> None:
+async def _generate_memories(memory_service: BaseMemoryService, session: Session) -> None:
     try:
-        await callback_context.add_session_to_memory()
+        await memory_service.add_session_to_memory(session)
         logger.info(
             "memory_generation_done",
-            extra={"session_id": callback_context.session.id, "user_id": callback_context.user_id},
+            extra={"session_id": session.id, "user_id": session.user_id, "events": len(session.events)},
         )
-    except ValueError:
-        pass  # No memory service configured (e.g. unit tests).
     except Exception as exc:  # noqa: BLE001
-        logger.warning("memory_generation_failed", extra={"error": str(exc)})
+        logger.warning("memory_generation_failed", extra={"session_id": session.id, "error": str(exc)})
 
 
-async def schedule_memory_generation(callback_context: CallbackContext) -> None:
-    """``after_agent_callback`` that persists the session to memory asynchronously.
+class MemoryPlugin(BasePlugin):
+    """Persists every completed invocation to long-term memory, asynchronously."""
 
-    Returns ``None`` immediately so the response is never delayed by memory
-    extraction. A strong reference to the task is kept to avoid garbage collection.
-    """
-    task = asyncio.create_task(_generate_memories(callback_context))
-    _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
-    return None
+    def __init__(self) -> None:
+        super().__init__(name="async_memory")
+
+    async def after_run_callback(self, *, invocation_context: InvocationContext) -> None:
+        memory_service = invocation_context.memory_service
+        if memory_service is None:
+            return None  # e.g. unit tests or local runs without a memory service
+        task = asyncio.create_task(_generate_memories(memory_service, invocation_context.session))
+        _background_tasks.add(task)  # strong ref so the task is not garbage-collected
+        task.add_done_callback(_background_tasks.discard)
+        logger.info(
+            "memory_generation_scheduled",
+            extra={"session_id": invocation_context.session.id, "invocation_id": invocation_context.invocation_id},
+        )
+        return None

@@ -10,6 +10,21 @@ permissions:
   id-token: write   # Workload Identity Federation (no JSON keys)
 
 jobs:
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Secret scanning (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: astral-sh/setup-uv@v3
+      - name: Dependency vulnerability audit (pip-audit)
+        # Accepted risks are tracked in SECURITY.md ("Known accepted vulnerabilities").
+        run: uvx pip-audit -r requirements.txt --strict --ignore-vuln CVE-2026-114603
+
   test:
     runs-on: ubuntu-latest
     steps:
@@ -22,7 +37,7 @@ jobs:
         run: make test
 
   eval-and-deploy:
-    needs: test
+    needs: [security, test]
     if: github.ref == 'refs/heads/main' && vars.GCP_WIF_PROVIDER != ''
     runs-on: ubuntu-latest
     env:

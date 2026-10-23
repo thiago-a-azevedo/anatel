@@ -66,7 +66,6 @@ fi
 log "Project-level IAM (least privilege)"
 for role in \
   roles/aiplatform.user \
-  roles/secretmanager.secretAccessor \
   roles/dlp.user \
   roles/modelarmor.user \
   roles/cloudtrace.agent \
@@ -98,19 +97,28 @@ CURRENT="$(g secrets versions access latest --secret="${SECRET_ID}" 2>/dev/null 
 if [[ "${CURRENT}" != "${MCP_URL}" ]]; then
   printf '%s' "${MCP_URL}" | g secrets versions add "${SECRET_ID}" --data-file=-
 fi
+# Least privilege: accessor on THIS secret only; project-level fallback if the caller
+# cannot set IAM on the secret.
+if ! g secrets add-iam-policy-binding "${SECRET_ID}" \
+  --member="serviceAccount:${SA_EMAIL}" --role=roles/secretmanager.secretAccessor >/dev/null 2>&1; then
+  echo "Secret-level binding not permitted; granting secretAccessor at project level."
+  g projects add-iam-policy-binding "${PROJECT_ID}" \
+    --member="serviceAccount:${SA_EMAIL}" --role=roles/secretmanager.secretAccessor --condition=None >/dev/null
+fi
 
 # ---------------------------------------------------------------- 5. Buckets
 log "Buckets"
 for bucket in "${STAGING_BUCKET}" "${REPORTS_BUCKET}"; do
   if ! g storage buckets describe "gs://${bucket}" >/dev/null 2>&1; then
     g storage buckets create "gs://${bucket}" --location="${REGION}" \
-      --uniform-bucket-level-access --public-access-prevention
+      --uniform-bucket-level-access --public-access-prevention \
+      --default-storage-class=STANDARD
   fi
+  g storage buckets update "gs://${bucket}" --versioning \
+    --update-labels=app=anatel-advisor,managed-by=infra-setup >/dev/null
 done
 g storage buckets add-iam-policy-binding "gs://${REPORTS_BUCKET}" \
   --member="serviceAccount:${SA_EMAIL}" --role=roles/storage.objectCreator >/dev/null
-g storage buckets add-iam-policy-binding "gs://${STAGING_BUCKET}" \
-  --member="serviceAccount:${SA_EMAIL}" --role=roles/storage.objectViewer >/dev/null
 
 # ---------------------------------------------------------------- 6. Model Armor
 log "Model Armor template ${ARMOR_TEMPLATE_ID}"
