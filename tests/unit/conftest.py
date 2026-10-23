@@ -1,4 +1,7 @@
-"""Shared pytest fixtures: make the package importable without GCP access."""
+"""Unit-test fixtures: make the package importable offline (fake, non-routable MCP URL).
+
+Scoped to tests/unit only: the eval and e2e suites must use the real Secret Manager value.
+"""
 
 import os
 
