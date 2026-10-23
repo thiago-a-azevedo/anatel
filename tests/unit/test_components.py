@@ -262,8 +262,9 @@ def test_runtime_telemetry_is_enabled_without_span_content_capture(monkeypatch):
     monkeypatch.setenv("REPORTS_BUCKET", "demo-bucket")
     env = deploy._runtime_env()
     assert env["GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY"] == "true"
+    assert env["OTEL_SEMCONV_STABILITY_OPT_IN"] == "gen_ai_latest_experimental"
     assert env["ADK_CAPTURE_MESSAGE_CONTENT_IN_SPANS"] == "false"
-    assert env["OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"] == "false"
+    assert env["OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"] == "NO_CONTENT"
     assert env["PII_REDACTION_MODE"] == "dlp"
 
     from anatel_advisor.agent_engine_app import agent_engine
@@ -278,15 +279,16 @@ def test_tracing_privacy_defaults_and_trace_correlation(monkeypatch):
     from opentelemetry.sdk.trace import TracerProvider
 
     from anatel_advisor.observability.tracing import (
-        CONTENT_CAPTURE_ENV_VARS,
+        CONTENT_CAPTURE_DEFAULTS,
         apply_privacy_defaults,
         current_trace_context,
     )
 
-    for name in CONTENT_CAPTURE_ENV_VARS:
+    for name in CONTENT_CAPTURE_DEFAULTS:
         monkeypatch.delenv(name, raising=False)
     apply_privacy_defaults()
-    assert all(os.environ[name] == "false" for name in CONTENT_CAPTURE_ENV_VARS)
+    assert {name: os.environ[name] for name in CONTENT_CAPTURE_DEFAULTS} == CONTENT_CAPTURE_DEFAULTS
+    assert CONTENT_CAPTURE_DEFAULTS["OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"] == "NO_CONTENT"
 
     assert current_trace_context() == {}
     tracer = TracerProvider().get_tracer("test")

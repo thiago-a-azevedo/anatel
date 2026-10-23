@@ -86,14 +86,20 @@ def _runtime_env() -> dict[str, str]:
             "GOOGLE_GENAI_USE_VERTEXAI": "TRUE",
             "PII_REDACTION_MODE": "dlp",
             "LOG_LEVEL": "INFO",
-            # Observability: OpenTelemetry traces + logs + metrics -> Cloud Trace /
-            # Cloud Logging / Cloud Monitoring (modern toggle, also visible in the Console).
+            # Observability (docs: agent-engine/manage/tracing). The Console's Traces /
+            # Dashboards tabs read these from deploymentSpec.env, so API deployments
+            # must set them explicitly:
+            #  - ENABLE_TELEMETRY: OpenTelemetry traces + logs + metrics -> Cloud Trace /
+            #    Cloud Logging / Cloud Monitoring (modern toggle, visible in the Console).
+            #  - OTEL_SEMCONV_STABILITY_OPT_IN: latest GenAI semantic conventions
+            #    (gen_ai.* spans, inference events and token/latency metrics).
             "GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY": "true",
-            # Privacy: never copy prompts, responses or tool arguments into span
-            # attributes / GenAI events. Intent and outcome are logged (PII-redacted)
-            # by the ObservabilityPlugin instead.
+            "OTEL_SEMCONV_STABILITY_OPT_IN": "gen_ai_latest_experimental",
+            # Privacy: never copy prompts, responses, tool arguments or user ids into
+            # span attributes / GenAI events (docs suggest EVENT_ONLY to include them).
+            # Intent and outcome are logged (PII-redacted) by the ObservabilityPlugin.
+            "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT": "NO_CONTENT",
             "ADK_CAPTURE_MESSAGE_CONTENT_IN_SPANS": "false",
-            "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT": "false",
         }
     )
     return env

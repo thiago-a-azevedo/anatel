@@ -35,17 +35,19 @@ _CONFIGURED = False
 
 TRACER_NAME = "anatel_advisor"
 
-#: Env vars that decide whether prompts / responses / tool args are copied into telemetry.
-CONTENT_CAPTURE_ENV_VARS = (
-    "ADK_CAPTURE_MESSAGE_CONTENT_IN_SPANS",
-    "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT",
-)
+#: Env vars that decide whether prompts / responses / tool args are copied into telemetry,
+#: with their privacy-preserving defaults (legacy ADK spans and OTel GenAI semconv).
+CONTENT_CAPTURE_DEFAULTS: dict[str, str] = {
+    "ADK_CAPTURE_MESSAGE_CONTENT_IN_SPANS": "false",
+    "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT": "NO_CONTENT",
+}
+CONTENT_CAPTURE_ENV_VARS = tuple(CONTENT_CAPTURE_DEFAULTS)
 
 
 def apply_privacy_defaults() -> None:
     """Keeps message content out of spans/events unless an operator opts in explicitly."""
-    for name in CONTENT_CAPTURE_ENV_VARS:
-        os.environ.setdefault(name, "false")
+    for name, value in CONTENT_CAPTURE_DEFAULTS.items():
+        os.environ.setdefault(name, value)
 
 
 def _configure_with_adk(settings) -> bool:
