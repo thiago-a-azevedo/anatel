@@ -1,3 +1,5 @@
+"""Domain exception and FastAPI exception handlers (structured, trace-correlated)."""
+
 import logging
 
 from fastapi import FastAPI, Request, status
@@ -7,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 class AnatelDataError(Exception):
-    """Exceção de domínio para falhas na consulta ou processamento de dados da Anatel."""
+    """Domain error while fetching or processing Anatel data."""
 
     def __init__(self, message: str, detail: str | None = None) -> None:
         super().__init__(message)
@@ -16,11 +18,14 @@ class AnatelDataError(Exception):
 
 
 def register_exception_handlers(app: FastAPI) -> None:
-    """Registra handlers globais de exceção para a aplicação FastAPI."""
+    """Registers the global exception handlers on the FastAPI application."""
 
     @app.exception_handler(AnatelDataError)
     async def anatel_data_error_handler(request: Request, exc: AnatelDataError) -> JSONResponse:
-        logger.warning(f"Erro de domínio Anatel em {request.url.path}: {exc.message}")
+        logger.warning(
+            "anatel_data_error",
+            extra={"event": "anatel_data_error", "path": request.url.path, "error": exc.message},
+        )
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             content={
@@ -32,11 +37,16 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-        logger.error(f"Erro inesperado em {request.url.path}: {exc}", exc_info=True)
+        logger.error(
+            "unhandled_exception",
+            extra={"event": "unhandled_exception", "path": request.url.path, "error_type": type(exc).__name__},
+            exc_info=True,
+        )
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={
                 "error": "InternalServerError",
+                # User-facing message stays in Portuguese (Brazilian end users).
                 "message": "Ocorreu um erro interno ao processar a requisição no MCP Anatel.",
             },
         )

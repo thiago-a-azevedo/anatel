@@ -1,4 +1,4 @@
-# Multi-stage build usando python-slim e uv para builds rápidos e reprodutíveis
+# Multi-stage build on python-slim + uv for fast, reproducible images
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS builder
 
 WORKDIR /app
@@ -8,10 +8,10 @@ ENV UV_COMPILE_BYTECODE=1 \
 COPY pyproject.toml uv.lock* ./
 RUN uv sync --no-install-project --no-dev
 
-# Imagem final de execução
+# Final runtime image
 FROM python:3.12-slim-bookworm
 
-# Cria usuário não-root (obrigatório pelas diretrizes de segurança corporativas)
+# Non-root user (corporate security baseline)
 RUN groupadd -r appgroup && useradd -r -g appgroup appuser
 
 WORKDIR /app
@@ -24,8 +24,8 @@ ENV PATH="/app/.venv/bin:$PATH" \
 
 USER appuser
 
-# Cloud Run injeta $PORT dinamicamente (padrão 8080)
-# 1 worker por instância garante compartilhamento do cache em memória (RAM)
-# --no-access-log: o Cloud Run já registra cada requisição (run.googleapis.com/requests);
-# a aplicação emite apenas logs JSON estruturados (intent/outcome por tool, correlacionados ao trace)
+# Cloud Run injects $PORT (default 8080).
+# One worker per instance so the in-memory (RAM) cache is shared by every request.
+# --no-access-log: Cloud Run already logs every request (run.googleapis.com/requests);
+# the app emits only structured JSON logs (intent/outcome per tool, trace-correlated).
 CMD ["sh", "-c", "exec uvicorn src.main:app --host 0.0.0.0 --port ${PORT} --workers 1 --no-access-log"]

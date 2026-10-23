@@ -124,12 +124,12 @@ ANATEL_GLOSSARY: dict[str, dict[str, Any]] = {
 
 
 def get_glossary_content(topico: str | None = None) -> dict[str, Any]:
-    """Retorna o glossário completo ou filtrado por tópico regulatório da Anatel."""
+    """Returns the full regulatory glossary or the entry for one Anatel topic."""
     if not topico or topico.strip().lower() in ("geral", "todos", "all", "*"):
         return ANATEL_GLOSSARY
     key = topico.strip().lower()
     if key in ANATEL_GLOSSARY:
         return {key: ANATEL_GLOSSARY[key]}
-    # Busca parcial
+    # Partial match on the topic id
     matched = {k: v for k, v in ANATEL_GLOSSARY.items() if key in k or key in v.get("titulo", "").lower()}
     return matched if matched else ANATEL_GLOSSARY

@@ -2,16 +2,16 @@
 set -euo pipefail
 
 # ==============================================================================
-# Deploy do Custom MCP Server (mcp-anatel) no Google Cloud Run
-#  1. Service account de runtime dedicada (least privilege) com permissão apenas
-#     para telemetria: Cloud Trace, Cloud Logging e Cloud Monitoring.
-#  2. Deploy (source-based, container non-root) com observabilidade habilitada:
-#     ENABLE_CLOUD_TRACE=true -> spans do SDK MCP exportados para o Cloud Trace,
-#     ligados ao trace do agente ADK pelo `traceparent` propagado em `_meta`;
-#     GOOGLE_CLOUD_PROJECT  -> correlação log <-> trace no Cloud Logging.
-#  3. Permissão Cloud Run Invoker para o Service Agent do Gemini Enterprise
-#     (Discovery Engine). A identidade do agente ADK recebe a mesma permissão via
-#     Terraform (terraform/iam.tf), com escopo no serviço.
+# Deploys the Custom MCP Server (mcp-anatel) to Google Cloud Run
+#  1. Dedicated, least-privilege runtime service account with telemetry-only
+#     roles: Cloud Trace, Cloud Logging and Cloud Monitoring.
+#  2. Source-based deploy (non-root container) with observability enabled:
+#     ENABLE_CLOUD_TRACE=true -> MCP SDK spans exported to Cloud Trace, joined to
+#     the ADK agent's trace through the `traceparent` propagated in `_meta`;
+#     GOOGLE_CLOUD_PROJECT  -> log <-> trace correlation in Cloud Logging.
+#  3. Cloud Run Invoker permission for the Gemini Enterprise service agent
+#     (Discovery Engine). The ADK agent's identity receives the same permission
+#     through Terraform (terraform/iam.tf), scoped to the service.
 # ==============================================================================
 
 GCLOUD="${GCLOUD:-gcloud}"
@@ -22,26 +22,26 @@ SERVICE_NAME="${SERVICE_NAME:-mcp-anatel}"
 RUNTIME_SA_NAME="${RUNTIME_SA_NAME:-mcp-anatel-sa}"
 
 if [[ -z "${PROJECT_ID}" ]]; then
-  echo "Erro: Defina a variável PROJECT_ID (ex: export PROJECT_ID=meu-projeto-gcp)"
+  echo "Error: set PROJECT_ID (e.g. export PROJECT_ID=my-gcp-project)"
   exit 1
 fi
 
 RUNTIME_SA="${RUNTIME_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 
-echo "==> 1. Obtendo PROJECT_NUMBER do projeto ${PROJECT_ID}..."
+echo "==> 1. Resolving PROJECT_NUMBER for ${PROJECT_ID}..."
 PROJECT_NUMBER="$(${GCLOUD} projects describe "${PROJECT_ID}" --format="value(projectNumber)")"
 echo "    PROJECT_NUMBER: ${PROJECT_NUMBER}"
 
-echo "==> 2. Garantindo a service account de runtime ${RUNTIME_SA} (telemetria apenas)..."
+echo "==> 2. Ensuring the runtime service account ${RUNTIME_SA} (telemetry only)..."
 if ! ${GCLOUD} iam service-accounts describe "${RUNTIME_SA}" --project "${PROJECT_ID}" >/dev/null 2>&1; then
   ${GCLOUD} iam service-accounts create "${RUNTIME_SA_NAME}" \
     --project "${PROJECT_ID}" \
     --display-name "mcp-anatel runtime (Cloud Run)" \
-    --description "Identidade do servidor MCP da Anatel; escreve apenas traces, logs e metricas."
+    --description "Identity of the Anatel MCP server; writes traces, logs and metrics only."
 fi
 
-# IAM é eventualmente consistente: uma SA recém-criada pode levar alguns segundos
-# para ser aceita em bindings. Repete com backoff antes de desistir.
+# IAM is eventually consistent: a freshly created service account can take a few
+# seconds before bindings accept it. Retry with backoff before giving up.
 bind_role() {
   local role="$1" attempt
   for attempt in 1 2 3 4 5 6; do
@@ -52,17 +52,17 @@ bind_role() {
         --quiet >/dev/null 2>&1; then
       return 0
     fi
-    echo "    binding ${role} ainda não aceito (tentativa ${attempt}/6); aguardando propagação do IAM..."
+    echo "    binding ${role} not accepted yet (attempt ${attempt}/6); waiting for IAM propagation..."
     sleep $((attempt * 5))
   done
-  echo "Erro: não foi possível conceder ${role} a ${RUNTIME_SA}" >&2
+  echo "Error: could not grant ${role} to ${RUNTIME_SA}" >&2
   return 1
 }
 for role in roles/cloudtrace.agent roles/logging.logWriter roles/monitoring.metricWriter; do
   bind_role "${role}"
 done
 
-echo "==> 3. Realizando deploy do ${SERVICE_NAME} no Google Cloud Run (${REGION})..."
+echo "==> 3. Deploying ${SERVICE_NAME} to Cloud Run (${REGION})..."
 ${GCLOUD} run deploy "${SERVICE_NAME}" \
   --source "${SCRIPT_DIR}" \
   --project "${PROJECT_ID}" \
@@ -79,7 +79,7 @@ ${GCLOUD} run deploy "${SERVICE_NAME}" \
 
 SERVICE_URL="$(${GCLOUD} run services describe "${SERVICE_NAME}" --project "${PROJECT_ID}" --region "${REGION}" --format="value(status.url)")"
 
-echo "==> 4. Concedendo permissão Cloud Run Invoker (roles/run.invoker) ao Service Agent do Gemini Enterprise..."
+echo "==> 4. Granting Cloud Run Invoker (roles/run.invoker) to the Gemini Enterprise service agent..."
 DISCOVERY_SA="serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-discoveryengine.iam.gserviceaccount.com"
 
 ${GCLOUD} projects add-iam-policy-binding "${PROJECT_ID}" \
@@ -90,20 +90,20 @@ ${GCLOUD} projects add-iam-policy-binding "${PROJECT_ID}" \
 
 echo ""
 echo "=============================================================================="
-echo "DEPLOY CONCLUÍDO COM SUCESSO!"
-echo "URL do Serviço Cloud Run : ${SERVICE_URL}"
-echo "Endpoint Custom MCP      : ${SERVICE_URL}/mcp"
-echo "Health Check             : ${SERVICE_URL}/healthz"
-echo "Readiness Check          : ${SERVICE_URL}/readyz"
+echo "DEPLOY COMPLETE"
+echo "Cloud Run service URL    : ${SERVICE_URL}"
+echo "Custom MCP endpoint      : ${SERVICE_URL}/mcp"
+echo "Health check             : ${SERVICE_URL}/healthz"
+echo "Readiness check          : ${SERVICE_URL}/readyz"
 echo "Runtime service account  : ${RUNTIME_SA}"
 echo ""
-echo "Observabilidade:"
+echo "Observability:"
 echo "  Logs   : resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"${SERVICE_NAME}\" AND jsonPayload.event=\"mcp_tool_outcome\""
-echo "  Traces : Cloud Trace -> span 'tools/call <tool>' (service.name=mcp-anatel), filho do span 'MCP send tools/call' do agente ADK"
+echo "  Traces : Cloud Trace -> span 'tools/call <tool>' (service.name=mcp-anatel), child of the ADK agent's 'MCP send tools/call' span"
 echo ""
-echo "No Console do Google Cloud -> Gemini Enterprise -> Data Stores -> Create Data Store:"
-echo "  1. Selecione 'Custom MCP Server'"
-echo "  2. Informe a URL HTTPS: ${SERVICE_URL}/mcp"
-echo "  3. Em Authentication, selecione 'Cloud Run integration'"
-echo "  4. Após ativo, acesse 'Actions' -> 'Reload custom actions' e habilite as 7 tools."
+echo "Google Cloud console -> Gemini Enterprise -> Data stores -> Create data store:"
+echo "  1. Select 'Custom MCP Server'"
+echo "  2. Enter the HTTPS URL: ${SERVICE_URL}/mcp"
+echo "  3. Under Authentication, select 'Cloud Run integration'"
+echo "  4. Once active, open 'Actions' -> 'Reload custom actions' and enable the 7 tools."
 echo "=============================================================================="

@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "mcp-anatel"
 version = "0.1.0"
-description = "Servidor MCP para consulta de dados da Anatel: Consumidor e Qualidade (RQUAL, IQS, Indicadores de Rede, Reclamações/IDA e Pesquisa de Satisfação) compatível com Gemini Enterprise Custom MCP Server"
+description = "MCP server for Anatel Consumer & Quality open data (RQUAL, IQS, network indicators, complaints/IDA, satisfaction survey), compatible with Gemini Enterprise Custom MCP Server and the ADK agent"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

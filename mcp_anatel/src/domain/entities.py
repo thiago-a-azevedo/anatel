@@ -1,36 +1,43 @@
+"""Response entities shared by every Anatel tool (field names are the API contract).
+
+Field names stay in Portuguese on purpose: they are the wire contract consumed by the
+ADK agent (``anatel_advisor/schemas.py``: ``registros``, ``metadados_fonte``,
+``origem_leitura`` ...) and by Gemini Enterprise actions.
+"""
+
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 
 class FonteMetadados(BaseModel):
-    """Metadados de rastreabilidade da fonte de dados da Anatel."""
+    """Provenance metadata for the Anatel data source behind a response."""
 
-    pilar: str = Field(description="Pilar de dados da Anatel consultado")
-    url_oficial_anatel: str = Field(description="URL oficial do conjunto de dados no portal da Anatel")
+    pilar: str = Field(description="Anatel data pillar that was queried")
+    url_oficial_anatel: str = Field(description="Official dataset URL on Anatel's open-data portal")
     origem_leitura: str = Field(
-        description="Origem efetiva da leitura: 'cache_ram_http', 'http_direto_anatel' ou 'fallback_seed_ram'"
+        description="Effective data origin: 'cache_ram_http', 'http_direto_anatel' or 'fallback_seed_ram'"
     )
     filtros_aplicados: dict[str, Any] = Field(default_factory=dict)
-    total_registros_encontrados: int = Field(description="Total de registros antes do truncamento de página")
-    registros_retornados: int = Field(description="Quantidade de registros retornados nesta resposta")
+    total_registros_encontrados: int = Field(description="Total rows matched before pagination")
+    registros_retornados: int = Field(description="Rows returned in this response")
 
 
 class RespostaPadraoAnatel(BaseModel):
-    """Estrutura padronizada de saída JSON para as Actions do Gemini Enterprise e Tools MCP."""
+    """Standard JSON output of every MCP tool / Gemini Enterprise action."""
 
     resumo_executivo: str = Field(
-        description="Síntese analítica direta respondendo à consulta com os principais destaques"
+        description="Direct analytical summary answering the query with the main highlights"
     )
     estatisticas_agregadas: dict[str, Any] = Field(
-        description="Métricas consolidadas (médias, melhores/piores operadoras, cumprimento de metas)"
+        description="Consolidated metrics (averages, best/worst operators, target compliance)"
     )
     registros: list[dict[str, Any]] = Field(
-        description="Lista dos principais registros filtrados e ordenados (limitada a 25-50 linhas)"
+        description="Main filtered and sorted rows (limited to 25-50 rows)"
     )
     tabela_markdown: str = Field(
-        description="Tabela formatada em Markdown pronta para apresentação ao usuário"
+        description="Markdown table ready to be shown to the user"
     )
     metadados_fonte: FonteMetadados = Field(
-        description="Informações sobre a fonte oficial da Anatel, cache em memória e filtros"
+        description="Official Anatel source, in-memory cache state and applied filters"
     )

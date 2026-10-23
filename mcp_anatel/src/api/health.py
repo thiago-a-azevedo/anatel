@@ -23,17 +23,13 @@ class ReadinessStatus(BaseModel):
 
 @router.get("/healthz", status_code=status.HTTP_200_OK, response_model=HealthStatus)
 async def liveness() -> HealthStatus:
-    """
-    Liveness probe: Indica se a aplicação está ativa no Cloud Run.
-    """
+    """Liveness probe: the process is up and serving (Cloud Run)."""
     return HealthStatus(status="alive")
 
 
 @router.get("/readyz", status_code=status.HTTP_200_OK, response_model=ReadinessStatus)
 async def readiness() -> ReadinessStatus:
-    """
-    Readiness probe: Verifica a prontidão do cache em memória (RAM) e do motor Polars.
-    """
+    """Readiness probe: in-memory (RAM) cache state and Polars engine availability."""
     return ReadinessStatus(
         status="ready",
         cache=memory_cache.stats(),

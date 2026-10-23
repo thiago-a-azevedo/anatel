@@ -17,9 +17,9 @@ class CacheEntry:
 
 
 class InMemoryDataFrameCache:
-    """
-    Cache thread-safe 100% em memória (RAM) com TTL para armazenar DataFrames Polars
-    já filtrados/padronizados sem qualquer escrita em disco ou banco local.
+    """Thread-safe, 100% in-memory (RAM) TTL cache for normalized Polars DataFrames.
+
+    Nothing is ever written to disk or to a local database.
     """
 
     def __init__(self, ttl_seconds: int = settings.cache_ttl_seconds) -> None:
@@ -30,7 +30,7 @@ class InMemoryDataFrameCache:
         self._misses = 0
 
     def get(self, key: str) -> tuple[pl.DataFrame, str] | None:
-        """Retorna (DataFrame, source_type) se presente e dentro do TTL."""
+        """Returns ``(DataFrame, data_origin)`` when present and within the TTL."""
         now = time.monotonic()
         with self._lock:
             entry = self._store.get(key)
@@ -46,7 +46,7 @@ class InMemoryDataFrameCache:
             return entry.dataframe, origin
 
     def set(self, key: str, df: pl.DataFrame, source_type: str, ttl_override: int | None = None) -> None:
-        """Armazena um Polars DataFrame em memória RAM com TTL."""
+        """Stores a Polars DataFrame in RAM with a TTL."""
         ttl = ttl_override if ttl_override is not None else self._ttl_seconds
         now = time.monotonic()
         with self._lock:
@@ -74,5 +74,5 @@ class InMemoryDataFrameCache:
             }
 
 
-# Instância singleton em memória do processo
+# Process-wide singleton (one uvicorn worker per instance shares it).
 memory_cache = InMemoryDataFrameCache()

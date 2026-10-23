@@ -1,1 +1,1 @@
-"""Camada de Infraestrutura: Cache em RAM com TTL, Cliente HTTP Anatel/CKAN e Seed de Resiliência."""
+"""Infrastructure layer: RAM TTL cache, Anatel/CKAN HTTP client and resilience seed snapshot."""

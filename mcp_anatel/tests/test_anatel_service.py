@@ -6,7 +6,7 @@ from src.infrastructure.memory_cache import memory_cache
 
 @pytest.fixture(autouse=True)
 def disable_external_http_in_unit_tests(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Garante execução instantânea e determinística em memória nos testes automatizados."""
+    """Keeps the tests instant and deterministic: in-memory seed only, no live HTTP."""
     monkeypatch.setattr(settings, "enable_live_http_fetch", False)
     memory_cache.clear()
 

@@ -1,1 +1,1 @@
-"""Camada de Domínio: Entidades, Normalizador de Operadoras/Serviços/UFs e Glossário Regulatório Anatel."""
+"""Domain layer: response entities, operator/service/state normalizer and Anatel regulatory glossary."""

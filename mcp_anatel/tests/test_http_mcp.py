@@ -23,10 +23,8 @@ async def test_health_and_readiness_probes() -> None:
 
 
 async def test_streamable_http_mcp_tools_list_and_call() -> None:
-    """
-    Valida o protocolo StreamableHTTP em /mcp exatamente como o Gemini Enterprise App
-    realiza a descoberta (tools/list) e execução (tools/call) de Actions.
-    """
+    """Exercises the StreamableHTTP protocol on /mcp exactly like Gemini Enterprise
+    discovers (tools/list) and runs (tools/call) actions."""
     async with app.router.lifespan_context(app):
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -35,7 +33,7 @@ async def test_streamable_http_mcp_tools_list_and_call() -> None:
                 "Accept": "application/json, text/event-stream",
             }
 
-            # 1. Descoberta de Actions (tools/list) em /mcp sem barra final
+            # 1. Action discovery (tools/list) on /mcp without a trailing slash
             list_payload = {
                 "jsonrpc": "2.0",
                 "id": 1,
@@ -57,7 +55,7 @@ async def test_streamable_http_mcp_tools_list_and_call() -> None:
             }
             assert expected_tools.issubset(tool_names)
 
-            # 2. Chamada de Action (tools/call) em /mcp/ (com barra final, testando o middleware)
+            # 2. Action call (tools/call) on /mcp/ (trailing slash, exercising the middleware)
             call_payload = {
                 "jsonrpc": "2.0",
                 "id": 2,

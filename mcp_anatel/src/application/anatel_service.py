@@ -22,7 +22,7 @@ def _clamp_limit(limite: int | None) -> int:
 
 
 def _records_to_markdown_table(records: list[dict[str, Any]], max_rows: int = 15) -> str:
-    """Converte uma lista de dicionários em uma tabela Markdown compacta e legível."""
+    """Renders a list of dicts as a compact, readable Markdown table (user-facing, pt-BR)."""
     if not records:
         return "_Nenhum registro encontrado para os filtros informados._"
     sample = records[:max_rows]
@@ -37,13 +37,16 @@ def _records_to_markdown_table(records: list[dict[str, Any]], max_rows: int = 15
 
 
 class AnatelService:
-    """
-    Orquestra consultas em memória (Polars) sobre os 4 pilares de Consumidor e Qualidade da Anatel:
-    1. Selo de Qualidade RQUAL e IQS
-    2. Indicadores Operacionais de Qualidade de Rede
-    3. Reclamações (Anatel Consumidor) e IDA
-    4. Pesquisa de Satisfação e Qualidade Percebida (ISG)
-    5. Comparativo Consolidado de Operadoras (cruzamento dos 4 pilares)
+    """Orchestrates in-memory (Polars) queries over Anatel's Consumer & Quality pillars:
+
+    1. RQUAL quality seal and IQS
+    2. Operational network-quality indicators
+    3. Complaints (Anatel Consumidor) and IDA
+    4. Satisfaction / perceived-quality survey (ISG)
+    5. Consolidated operator comparison (join of the 4 pillars)
+
+    Every method returns ``RespostaPadraoAnatel.model_dump()``; summaries and tables are
+    written in Portuguese because they are shown to Brazilian end users.
     """
 
     async def consultar_rqual_iqs(
@@ -392,10 +395,8 @@ class AnatelService:
         municipio: str | None = None,
         operadoras: list[str] | None = None,
     ) -> dict[str, Any]:
-        """
-        Cruza em memória os 4 pilares da Anatel (Selo RQUAL/IQS + Indicadores de Rede + Reclamações/IDA + Satisfação ISG)
-        para classificar e comparar operadoras lado a lado em uma mesma UF e serviço.
-        """
+        """Joins the 4 Anatel pillars (RQUAL/IQS + network indicators + complaints/IDA +
+        satisfaction ISG) in memory to rank and compare operators for one state and service."""
         srv_norm = normalize_service(servico) or "SCM"
         uf_norm = normalize_uf(uf) or "BR"
         mun_norm = normalize_municipality(municipio)
@@ -406,7 +407,7 @@ class AnatelService:
         df_ida, _ = await anatel_http_client.get_reclamacoes_ida_df()
         df_sat, _ = await anatel_http_client.get_pesquisa_satisfacao_df()
 
-        # 1. Filtra IQS mais recente
+        # 1. Latest IQS per operator
         iqs_sub = df_iqs.filter((pl.col("servico") == srv_norm) & (pl.col("uf") == uf_norm))
         if mun_norm:
             iqs_mun = iqs_sub.filter(pl.col("municipio").str.to_uppercase().str.contains(mun_norm))
@@ -424,7 +425,7 @@ class AnatelService:
             )
         )
 
-        # 2. Filtra Indicadores de Rede (velocidade download, latência, disponibilidade)
+        # 2. Network indicators (download speed, latency, availability)
         rede_sub = df_rede.filter((pl.col("servico") == srv_norm) & (pl.col("uf") == uf_norm))
         rede_agg = (
             rede_sub.sort("ano_mes", descending=True)
@@ -445,7 +446,7 @@ class AnatelService:
             )
         )
 
-        # 3. Filtra IDA e Reclamações
+        # 3. IDA and complaints
         ida_sub = df_ida.filter((pl.col("servico") == srv_norm) & (pl.col("uf") == uf_norm))
         ida_agg = (
             ida_sub.sort("ano_mes", descending=True)
@@ -457,7 +458,7 @@ class AnatelService:
             )
         )
 
-        # 4. Filtra Pesquisa de Satisfação (ISG)
+        # 4. Satisfaction survey (ISG)
         sat_sub = df_sat.filter((pl.col("servico") == srv_norm) & (pl.col("uf") == uf_norm))
         sat_agg = (
             sat_sub.sort("ano", descending=True)

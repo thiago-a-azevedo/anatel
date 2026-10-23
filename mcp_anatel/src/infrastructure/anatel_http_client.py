@@ -21,10 +21,11 @@ logger = logging.getLogger(__name__)
 
 
 class AnatelHttpClient:
-    """
-    Cliente HTTP assíncrono para consulta em memória (RAM) ao Portal de Dados Abertos / CKAN da Anatel.
-    Suporta descompactação seletiva de arquivos ZIP/CSV via io.BytesIO diretamente para Polars DataFrames
-    e fallback automático em memória para garantir resiliência e cumprimento do timeout do Gemini Enterprise.
+    """Async HTTP client for Anatel's open-data portal / CKAN API, fully in memory.
+
+    ZIP/CSV payloads are unpacked from ``io.BytesIO`` straight into Polars DataFrames
+    (no disk writes). Every read falls back to the embedded seed snapshot so the
+    service stays resilient and within the Gemini Enterprise action timeout.
     """
 
     def __init__(self, timeout_seconds: float = settings.http_timeout_seconds) -> None:
@@ -35,9 +36,9 @@ class AnatelHttpClient:
         url: str,
         required_columns: set[str],
     ) -> pl.DataFrame | None:
-        """
-        Tenta baixar um arquivo CSV ou ZIP da Anatel em memória (io.BytesIO)
-        sem gravar nada em disco e valida se contém as colunas esperadas.
+        """Downloads a CSV or ZIP from Anatel in memory and validates the expected columns.
+
+        Returns ``None`` (caller falls back to the seed) on any error or schema mismatch.
         """
         if not settings.enable_live_http_fetch:
             return None
@@ -58,7 +59,7 @@ class AnatelHttpClient:
                         csv_names = [n for n in zf.namelist() if n.lower().endswith(".csv")]
                         if not csv_names:
                             return None
-                        # Prioriza o arquivo CSV mais recente na listagem
+                        # Prefer the most recent CSV in the archive listing
                         target_csv = sorted(csv_names)[-1]
                         with zf.open(target_csv) as csv_file:
                             csv_bytes = csv_file.read()
@@ -78,8 +79,13 @@ class AnatelHttpClient:
                 return None
         except Exception as exc:
             logger.info(
-                f"Portal HTTP Anatel indisponível ou schema divergente em {url} ({exc}). "
-                "Acionando snapshot consolidado em memória (RAM)."
+                "anatel_live_fetch_failed_using_seed",
+                extra={
+                    "event": "anatel_live_fetch_failed_using_seed",
+                    "url": url,
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                },
             )
             return None
 
@@ -90,7 +96,7 @@ class AnatelHttpClient:
         required_columns: set[str],
         fallback_builder: Callable[[], pl.DataFrame],
     ) -> tuple[pl.DataFrame, str]:
-        """Consulta o cache TTL em RAM; se ausente, tenta HTTP em memória ou carrega o fallback em RAM."""
+        """RAM cache first; on a miss, live HTTP read, then the in-memory seed fallback."""
         cached = memory_cache.get(cache_key)
         if cached is not None:
             return cached
@@ -141,10 +147,8 @@ class AnatelHttpClient:
         termo_busca: str = "qualidade rqual consumidor",
         limite: int = 10,
     ) -> tuple[list[dict[str, Any]], str]:
-        """
-        Consulta a API CKAN da Anatel (`package_search`) em memória com fallback para o catálogo
-        oficial de conjuntos de dados de Consumidor e Qualidade.
-        """
+        """Queries Anatel's CKAN API (``package_search``) with a fallback to the embedded
+        catalog of Consumer & Quality datasets."""
         if settings.enable_live_http_fetch:
             try:
                 async with httpx.AsyncClient(
@@ -180,7 +184,15 @@ class AnatelHttpClient:
                                 )
                             return parsed, "http_direto_anatel"
             except Exception as exc:
-                logger.info(f"Fallback CKAN acionado para busca '{termo_busca}': {exc}")
+                logger.info(
+                    "ckan_live_search_failed_using_seed",
+                    extra={
+                        "event": "ckan_live_search_failed_using_seed",
+                        "termo_busca": termo_busca,
+                        "error_type": type(exc).__name__,
+                        "error": str(exc),
+                    },
+                )
 
         term_tokens = [t.lower() for t in termo_busca.split() if len(t) > 2]
         filtered = []

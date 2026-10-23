@@ -1,1 +1,1 @@
-"""Camada de Aplicação: Serviços analíticos em Polars para os 4 pilares da Anatel."""
+"""Application layer: Polars analytics services for the Anatel Consumer & Quality pillars."""

@@ -1,8 +1,9 @@
-"""
-Snapshot consolidado em memória (RAM) com dados oficiais de referência da Anatel
-(RQUAL/IQS, Indicadores de Rede, Reclamações/IDA e Pesquisa de Satisfação).
-Utilizado como fallback imediato para garantir SLA < 3s no Gemini Enterprise caso
-o servidor HTTP/FTP da Anatel apresente lentidão ou indisponibilidade.
+"""In-memory (RAM) reference snapshot of Anatel data (RQUAL/IQS, network indicators,
+complaints/IDA and the satisfaction survey).
+
+Used as an instant fallback (SLA < 3 s for Gemini Enterprise actions) whenever Anatel's
+HTTP/FTP portal is slow or unavailable. Values are illustrative reference figures; the
+response metadata marks them as ``origem_leitura="fallback_seed_ram"``.
 """
 
 from typing import Any
@@ -23,7 +24,7 @@ def _compute_selo(iqs: float) -> str:
 
 
 def build_fallback_rqual_iqs() -> pl.DataFrame:
-    """Constrói DataFrame Polars de Selo RQUAL e IQS por Operadora, Serviço, UF e Município."""
+    """Builds the RQUAL seal / IQS DataFrame by operator, service, state and municipality."""
     base_profiles = [
         # (operadora, grupo, servicos, ufs_principais, base_iqs)
         ("VIVO", "TELEFONICA BRASIL", ["SMP", "SCM", "STFC"], ["BR", "SP", "RJ", "MG", "PR", "SC", "RS", "BA", "PE", "CE", "DF", "GO", "PA", "AM"], 8.55),
@@ -134,7 +135,7 @@ def build_fallback_rqual_iqs() -> pl.DataFrame:
 
 
 def build_fallback_indicadores_rede() -> pl.DataFrame:
-    """Constrói DataFrame Polars dos Indicadores de Qualidade de Rede (RQUAL / ESAQ)."""
+    """Builds the network-quality indicators DataFrame (RQUAL / ESAQ)."""
     operadoras_perf = [
         ("UNIFIQUE", ["SCM", "SMP"], ["BR", "SC", "RS", "PR"], 98.4, 98.1, 14.2, 4.1, 0.18, 99.65),
         ("BRISANET", ["SCM", "SMP"], ["BR", "CE", "PE", "BA"], 97.9, 97.5, 18.5, 5.2, 0.24, 99.52),
@@ -205,7 +206,7 @@ def build_fallback_indicadores_rede() -> pl.DataFrame:
 
 
 def build_fallback_reclamacoes_ida() -> pl.DataFrame:
-    """Constrói DataFrame Polars de Reclamações (Anatel Consumidor) e IDA."""
+    """Builds the complaints (Anatel Consumidor) and IDA DataFrame."""
     perfis_reclamacoes = [
         # (operadora, servicos, ufs, base_vol, ind_1000, motivo_principal, resolucao_pct, prazo_dias, nota_ida)
         ("UNIFIQUE", ["SCM", "SMP"], ["BR", "SC", "RS", "PR"], 180, 0.42, "Qualidade, funcionamento e reparo técnico", 91.8, 3.1, 93.4),
@@ -262,7 +263,7 @@ def build_fallback_reclamacoes_ida() -> pl.DataFrame:
 
 
 def build_fallback_pesquisa_satisfacao() -> pl.DataFrame:
-    """Constrói DataFrame Polars da Pesquisa de Satisfação e Qualidade Percebida (ISG)."""
+    """Builds the satisfaction / perceived-quality survey (ISG) DataFrame."""
     perfis_satisfacao = [
         # (operadora, servicos, ufs, isg_base, func_base, atend_base, cob_base, amostra)
         ("UNIFIQUE", ["SCM", "SMP"], ["BR", "SC", "RS", "PR"], 8.42, 8.75, 8.30, 8.55, 2400),

@@ -18,9 +18,9 @@ configure_tracing()  # no-op outside Cloud Run unless ENABLE_CLOUD_TRACE=true
 
 
 class NormalizeMcpTrailingSlashMiddleware:
-    """
-    Garante que tanto POST /mcp quanto POST /mcp/ funcionem sem 307 Temporary Redirect,
-    evitando falhas de handshake no Gemini Enterprise Custom MCP Server.
+    """Serves both ``POST /mcp`` and ``POST /mcp/`` without a 307 redirect.
+
+    Gemini Enterprise's Custom MCP Server handshake does not follow redirects.
     """
 
     def __init__(self, app: ASGIApp) -> None:
@@ -42,8 +42,8 @@ def create_app() -> FastAPI:
     own ``StreamableHTTPSessionManager`` - the manager can only be started once, and
     tests build isolated instances.
     """
-    # host="0.0.0.0", stateless_http=True e json_response=True garantem compatibilidade
-    # com Google Cloud Run (.run.app) e Gemini Enterprise Custom MCP Server
+    # host="0.0.0.0", stateless_http=True and json_response=True keep the transport
+    # compatible with Cloud Run (.run.app) and Gemini Enterprise Custom MCP Server.
     mcp_http_app = mcp.streamable_http_app(
         streamable_http_path="/mcp",
         stateless_http=True,
@@ -54,7 +54,7 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
-        """Gerencia o ciclo de vida do SessionManager do StreamableHTTP MCP no Cloud Run."""
+        """Runs the StreamableHTTP session manager for the lifetime of the ASGI app."""
         async with session_manager.run():
             yield
 
@@ -73,7 +73,7 @@ def create_app() -> FastAPI:
     app.add_middleware(NormalizeMcpTrailingSlashMiddleware)
     register_exception_handlers(app)
 
-    # Rotas de integridade obrigatórias para o Google Cloud Run
+    # Health probes required by Cloud Run
     app.include_router(health_router)
 
     @app.get("/")
@@ -88,7 +88,7 @@ def create_app() -> FastAPI:
             "health_probes": {"liveness": "/healthz", "readiness": "/readyz"},
         }
 
-    # Monta o StreamableHTTP (/mcp) na raiz após as rotas explícitas do FastAPI
+    # Mount StreamableHTTP (/mcp) at the root, after the explicit FastAPI routes
     app.mount("/", mcp_http_app)
     return app
 
@@ -97,28 +97,28 @@ app = create_app()
 
 
 def run_cli() -> None:
+    """Command-line entrypoint (``mcp-anatel``).
+
+    * ``--transport stdio``: MCP over stdin/stdout for local clients (Antigravity, Claude, Cursor).
+    * ``--transport streamable-http``: HTTP/ASGI server via uvicorn on ``$PORT`` (Cloud Run / Gemini Enterprise).
     """
-    Entrypoint de linha de comando (`mcp-anatel`):
-    - `--transport stdio`: Executa o servidor MCP via stdin/stdout para clientes locais (Antigravity, Claude, Cursor).
-    - `--transport streamable-http`: Executa o servidor HTTP/ASGI via Uvicorn na porta $PORT (padrão Cloud Run / Gemini Enterprise).
-    """
-    parser = argparse.ArgumentParser(description="Servidor MCP Anatel - Consumidor e Qualidade (RQUAL/IQS)")
+    parser = argparse.ArgumentParser(description="Anatel MCP server - Consumer & Quality (RQUAL/IQS)")
     parser.add_argument(
         "--transport",
         choices=["stdio", "streamable-http"],
         default="stdio",
-        help="Protocolo de transporte MCP: 'stdio' (local) ou 'streamable-http' (Cloud Run / Gemini Enterprise)",
+        help="MCP transport: 'stdio' (local) or 'streamable-http' (Cloud Run / Gemini Enterprise)",
     )
     parser.add_argument(
         "--host",
         default="0.0.0.0",
-        help="Host de bind quando em modo streamable-http (default: 0.0.0.0)",
+        help="Bind host in streamable-http mode (default: 0.0.0.0)",
     )
     parser.add_argument(
         "--port",
         type=int,
         default=settings.port,
-        help="Porta HTTP quando em modo streamable-http (default: $PORT ou 8080)",
+        help="HTTP port in streamable-http mode (default: $PORT or 8080)",
     )
     args = parser.parse_args()
 

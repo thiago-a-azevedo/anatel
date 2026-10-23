@@ -2,7 +2,7 @@ import unicodedata
 
 
 def _strip_accents(text: str) -> str:
-    """Remove acentos e converte para maiúsculas sem espaços extras."""
+    """Strips accents, trims and upper-cases ``text``."""
     normalized = unicodedata.normalize("NFKD", text.strip())
     return "".join(c for c in normalized if not unicodedata.combining(c)).upper()
 
@@ -139,7 +139,7 @@ INDICATOR_ALIASES: dict[str, str] = {
 
 
 def normalize_service(servico: str | None) -> str | None:
-    """Converte termos naturais (ex: 'fibra', 'celular', 'banda larga') para a sigla Anatel (SCM, SMP, STFC)."""
+    """Maps natural-language terms ('fibra', 'celular', 'banda larga'...) to the Anatel service code (SCM, SMP, STFC)."""
     if not servico or not servico.strip():
         return None
     cleaned = _strip_accents(servico)
@@ -154,7 +154,7 @@ def normalize_service(servico: str | None) -> str | None:
 
 
 def normalize_operator(operadora: str | None) -> str | None:
-    """Converte nomes comerciais ou regulatórios (ex: 'Telefonica', 'Vivo', 'Claro S.A.') para o nome canônico."""
+    """Maps commercial or regulatory names ('Telefonica', 'Vivo', 'Claro S.A.'...) to the canonical operator name."""
     if not operadora or not operadora.strip():
         return None
     cleaned = _strip_accents(operadora)
@@ -169,7 +169,7 @@ def normalize_operator(operadora: str | None) -> str | None:
 
 
 def normalize_uf(uf: str | None) -> str | None:
-    """Normaliza sigla ou nome de estado brasileiro (ex: 'São Paulo' -> 'SP', 'Nacional' -> 'BR')."""
+    """Normalizes a Brazilian state code or name ('São Paulo' -> 'SP', 'Nacional' -> 'BR')."""
     if not uf or not uf.strip():
         return None
     cleaned = _strip_accents(uf)
@@ -179,7 +179,7 @@ def normalize_uf(uf: str | None) -> str | None:
 
 
 def normalize_indicator(indicador: str | None) -> str | None:
-    """Normaliza o nome do indicador técnico de rede do RQUAL."""
+    """Normalizes an RQUAL network-indicator name to its canonical id."""
     if not indicador or not indicador.strip():
         return None
     cleaned = _strip_accents(indicador)
@@ -195,7 +195,7 @@ def normalize_indicator(indicador: str | None) -> str | None:
 
 
 def normalize_municipality(municipio: str | None) -> str | None:
-    """Remove acentos e padroniza busca parcial de município."""
+    """Strips accents and upper-cases a municipality name for partial matching."""
     if not municipio or not municipio.strip():
         return None
     cleaned = _strip_accents(municipio)

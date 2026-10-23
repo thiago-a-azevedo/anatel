@@ -1,1 +1,1 @@
-"""Núcleo utilitário de logging estruturado e tratamento de exceções."""
+"""Core utilities: structured logging, tracing, intent/outcome middleware and exception handling."""

@@ -8,11 +8,14 @@ from src.core.observability import ObservabilityMiddleware
 from src.domain.glossary import get_glossary_content
 from src.infrastructure.fallback_seed import FALLBACK_CKAN_PACKAGES
 
-# Instância oficial MCPServer (mcp 2.x) compatível com StreamableHTTP (/mcp)
-# para o Gemini Enterprise App (Custom MCP Server) e clientes stdio locais.
-# Middleware: o SDK já abre um span OpenTelemetry por mensagem (OpenTelemetryMiddleware,
-# mais externo); ObservabilityMiddleware roda dentro dele e registra intent/outcome
-# estruturado de cada tools/call (ver src/core/observability.py).
+# Official MCPServer (mcp 2.x) instance, served over StreamableHTTP (/mcp) for Gemini
+# Enterprise (Custom MCP Server) and the ADK agent, or over stdio for local clients.
+# Middleware: the SDK already opens one OpenTelemetry span per message
+# (OpenTelemetryMiddleware, outermost); ObservabilityMiddleware runs inside it and logs a
+# structured intent/outcome pair for every tools/call (see src/core/observability.py).
+#
+# Tool, resource and prompt descriptions are deliberately in Portuguese: they are read by
+# the LLM and shown to Brazilian end users (Gemini Enterprise actions).
 mcp = MCPServer(
     name="mcp-anatel",
     instructions=(
@@ -186,7 +189,7 @@ async def consultar_glossario_metodologia_anatel(
 
 
 # ============================================================================
-# MCP Resources (para clientes MCP Desktop como Antigravity, Claude, Cursor)
+# MCP resources (for desktop MCP clients such as Antigravity, Claude, Cursor)
 # ============================================================================
 
 @mcp.resource(
@@ -210,7 +213,7 @@ def resource_catalogo_datasets() -> str:
 
 
 # ============================================================================
-# MCP Prompts (Templates de Análise Prontos)
+# MCP prompts (ready-made analysis templates)
 # ============================================================================
 
 @mcp.prompt(
