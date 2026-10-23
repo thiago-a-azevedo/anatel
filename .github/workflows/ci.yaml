@@ -18,7 +18,7 @@ jobs:
   security:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Secret scanning (gitleaks)
@@ -33,7 +33,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v3
       - run: uv venv .venv --python 3.12 && uv pip install --python .venv/bin/python -e ".[dev]"
       - name: Lint
@@ -58,7 +58,7 @@ jobs:
       GOOGLE_CLOUD_LOCATION: us-central1
       GOOGLE_GENAI_USE_VERTEXAI: "TRUE"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: auth
         uses: google-github-actions/auth@v2
         with:
@@ -88,7 +88,7 @@ jobs:
       GOOGLE_CLOUD_LOCATION: us-central1
       GOOGLE_GENAI_USE_VERTEXAI: "TRUE"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
