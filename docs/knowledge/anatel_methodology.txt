@@ -1,0 +1,39 @@
+ANATEL TELECOM QUALITY METHODOLOGY - KNOWLEDGE BASE
+(Source: public Anatel documentation on RQUAL, Anatel Consumidor and the Satisfaction and Perceived Quality Survey. Summarized for the Anatel Telecom Advisor.)
+
+1. SERVICES
+- SMP (Servico Movel Pessoal): mobile telephony and mobile data.
+- SCM (Servico de Comunicacao Multimidia): fixed broadband, including fiber, cable, radio and satellite internet.
+- STFC (Servico Telefonico Fixo Comutado): fixed landline telephony.
+- SeAC (Servico de Acesso Condicionado): pay TV.
+
+2. RQUAL - QUALITY REGULATION (Regulamento de Qualidade dos Servicos de Telecomunicacoes)
+RQUAL replaced the previous per-service quality regulations. It evaluates operators by service, by state (UF) and by municipality.
+- IQS (Indice de Qualidade do Servico): score from 0 to 10 combining network indicators, consumer complaints and perceived quality.
+- Quality seal (Selo de Qualidade): letters A to E derived from the IQS. A = highest quality, E = lowest quality. Seals are published periodically for each operator, service and geography.
+- Network indicators measured under RQUAL include download speed compliance (% of measurements meeting the contracted speed), upload speed compliance, latency (milliseconds, lower is better), jitter (milliseconds, lower is better), packet loss (%, lower is better) and network availability (% uptime, higher is better). Each indicator has a regulatory target; operators are assessed on compliance with the target.
+
+3. ANATEL CONSUMIDOR - COMPLAINTS AND IDA
+- Anatel Consumidor is the official channel where consumers register complaints against operators.
+- Complaints per 1,000 accesses normalizes complaint volume by customer base. LOWER is better.
+- Main complaint reasons typically include billing errors (cobranca indevida), service quality/outages, cancellation difficulties, and customer service.
+- Resolution rate (%): share of complaints resolved by the operator. Higher is better.
+- Average response time (days): lower is better.
+- IDA (Indice de Desempenho no Atendimento): customer-service performance index from 0 to 100 combining complaint rate, resolution and response time. Higher is better.
+
+4. SATISFACTION AND PERCEIVED QUALITY SURVEY - ISG
+- Annual survey run by Anatel with consumers of each service.
+- ISG (Indice de Satisfacao Geral): overall satisfaction from 0 to 10. Higher is better.
+- Dimension scores: functioning (funcionamento), customer service (atendimento telefonico and digital), billing / top-up (cobranca / recarga).
+
+5. CONSOLIDATED OPERATOR SCORE (used by the comparar_operadoras tool)
+Score 0-10 = 35% IQS + 30% IDA (rescaled to 0-10) + 35% ISG.
+
+6. INTERPRETATION GUIDELINES
+- Always compare operators within the same service and geography.
+- A higher IQS, IDA, ISG, availability or speed compliance is better; higher latency, jitter, packet loss or complaints per 1,000 accesses is worse.
+- Regional operators (e.g. Brisanet, Algar, Unifique, Vero, Desktop) often score highly in their home regions; national operators (Vivo, Claro, TIM, Oi) have broader coverage.
+- Always cite the pillar and the reference period of each figure.
+
+7. OPEN DATA
+Anatel publishes datasets on its open data portal (dados abertos, CKAN catalog), including RQUAL panels and consumer complaint panels, as CSV/ZIP files.

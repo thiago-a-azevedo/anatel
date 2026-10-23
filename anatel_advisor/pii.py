@@ -34,7 +34,13 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("CREDIT_CARD_NUMBER", re.compile(r"\b(?:\d[ -]?){13,16}\b")),
     (
         "PHONE_NUMBER",
-        re.compile(r"(?:\+?55\s?)?(?:\(?\d{2}\)?\s?)?(?:9\s?)?\d{4}[-\s]?\d{4}\b"),
+        # Requires a BR-style separator ("98765-4321", "(11) 3456 7890") or a +55 prefix,
+        # so plain decimals / timestamps / metrics are never redacted.
+        re.compile(
+            r"(?:\+55\s?\(?\d{2}\)?\s?\d{4,5}[-\s]?\d{4}\b)"
+            r"|(?:(?<![\d.])(?:\(?\d{2}\)?\s)?\d{4,5}-\d{4}\b)"
+            r"|(?:\(\d{2}\)\s?\d{4,5}\s?\d{4}\b)"
+        ),
     ),
 ]
 

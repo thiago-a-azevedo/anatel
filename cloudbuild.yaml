@@ -1,0 +1,32 @@
+# Cloud Build pipeline: lint -> unit tests -> golden eval -> infra -> deploy.
+# Trigger: gcloud builds submit --config cloudbuild.yaml --project nprod-demo
+steps:
+  - id: install
+    name: python:3.12-slim
+    entrypoint: bash
+    args: ["-c", "pip install -q uv && uv venv .venv && uv pip install --python .venv/bin/python -e '.[dev]'"]
+  - id: lint
+    name: python:3.12-slim
+    entrypoint: bash
+    args: ["-c", ".venv/bin/python -m ruff check anatel_advisor tests deployment"]
+  - id: unit-tests
+    name: python:3.12-slim
+    entrypoint: bash
+    args: ["-c", ".venv/bin/python -m pytest tests/unit -q"]
+  - id: eval
+    name: python:3.12-slim
+    entrypoint: bash
+    env: ["GOOGLE_CLOUD_PROJECT=$PROJECT_ID", "GOOGLE_CLOUD_LOCATION=us-central1", "GOOGLE_GENAI_USE_VERTEXAI=TRUE"]
+    args: ["-c", ".venv/bin/python -m pytest tests/eval -m eval -q"]
+  - id: infra
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    env: ["PROJECT_ID=$PROJECT_ID", "REGION=us-central1"]
+    args: ["infra/setup.sh"]
+  - id: deploy
+    name: python:3.12-slim
+    entrypoint: bash
+    args: ["-c", ".venv/bin/python deployment/deploy.py"]
+options:
+  logging: CLOUD_LOGGING_ONLY
+timeout: 3600s
