@@ -42,7 +42,7 @@ jobs:
         run: make lint
       - name: Unit tests
         run: make test
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
       - name: Terraform fmt / validate
         working-directory: terraform
         run: |
